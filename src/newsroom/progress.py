@@ -20,7 +20,7 @@ from typing import Any
 STAGES: list[tuple[str, str, float]] = [
     ("collect", "Collecting news", 0.15),
     ("group", "Grouping the same news into events", 0.10),
-    ("select", "Choosing stories for each community", 0.05),
+    ("select", "Choosing the stories worth writing", 0.05),
     ("write", "Writing, translating and checking stories", 0.60),
     ("link", "Linking related topics", 0.10),
 ]

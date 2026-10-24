@@ -165,3 +165,25 @@ def test_the_topic_export_lists_only_active_topics_and_includes_promoted_ones(ne
 
     assert made.id in ids and waiting.id not in ids
     assert len(ids) >= 22  # the configured topics are there too
+
+
+def test_a_topic_counts_each_event_below_it_once(newsroom):
+    from fastapi.testclient import TestClient
+
+    from newsroom.api.app import create_app
+
+    store = newsroom.store
+    seed_topics(store)
+    parent = next(t for t in store.find(Topic) if t.parent_id is None and t.name == "Finland")
+    kids = [t for t in store.find(Topic) if t.parent_id == parent.id]
+    both = Event(id="evt_both", title="Filed twice", topic_ids=[kids[0].id, kids[1].id])
+    own = Event(id="evt_own", title="Filed on the parent", topic_ids=[parent.id])
+    store.put(both)
+    store.put(own)
+
+    with TestClient(create_app(newsroom)) as client:
+        rows = {t["id"]: t for t in client.get("/overview").json()["topics"]}
+
+    assert rows[parent.id]["events"] == 2  # the event filed under two children counts once
+    assert rows[kids[0].id]["events"] == 1
+    assert rows[kids[1].id]["events"] == 1

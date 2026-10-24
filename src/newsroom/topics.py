@@ -79,6 +79,11 @@ def seed_topics(store: Store, path: str | Path | None = None) -> list[Topic]:
                     keywords=[str(k) for k in item.get("keywords", [])],
                 )
                 store.put(existing)
+            keywords = [str(k) for k in item.get("keywords", [])]
+            if existing.keywords != keywords and existing.status == "active":
+                # The config is the source of truth for the topics it defines.
+                existing.keywords = keywords
+                store.put(existing)
             out.append(existing)
             walk(item.get("children", []) or [], doc_id)
 

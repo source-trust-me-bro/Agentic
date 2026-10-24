@@ -18,8 +18,9 @@ from newsroom.api.engagement_routes import register as register_engagement_route
 from newsroom.config import get_settings
 from newsroom.domain import Article, CommunityMessage, new_id
 from newsroom.hitl import ReviewError
+from newsroom.outlets import outlet_of
 from newsroom.service import Newsroom
-from newsroom.topics import get_tree
+from newsroom.topics import get_tree, seed_topics
 
 
 class CycleRequest(BaseModel):
@@ -269,6 +270,24 @@ def create_app(newsroom: Newsroom | None = None) -> FastAPI:
             app.state.cycle_lock.release()
         return {"links_added": added}
 
+    @app.post("/tree/rebuild", dependencies=[Depends(require_staff)])
+    def rebuild_tree(nr: Newsroom = Depends(get_newsroom)) -> dict[str, Any]:
+        """File every event again under the current rules, then rebuild the topic links."""
+
+        if not app.state.cycle_lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="A cycle is running; try again after it.")
+        try:
+            seed_topics(nr.store)  # also refreshes the keywords of the configured topics
+            report = nr.architect.retree()
+            nr.limits.start()
+            try:
+                report["links_added"] = nr.connector.connect()
+            finally:
+                nr.limits.finish()
+        finally:
+            app.state.cycle_lock.release()
+        return report
+
     @app.get("/overview", dependencies=[Depends(require_staff)])
     def overview(nr: Newsroom = Depends(get_newsroom)) -> dict[str, Any]:
         """What the agents work from: the topic tree, the feeds they read and recent cycles."""
@@ -276,19 +295,25 @@ def create_app(newsroom: Newsroom | None = None) -> FastAPI:
         nr.reload_sources()
         topics: list[dict[str, Any]] = []
 
-        def walk(nodes: list[Any], depth: int) -> None:
+        def walk(nodes: list[Any], depth: int) -> set[str]:
+            """Fills ``topics`` in tree order. A topic's number counts each event once, whether
+            it is filed under the topic itself or under any topic below it."""
+
+            seen: set[str] = set()
             for node in nodes:
-                topics.append(
-                    {
-                        "id": node.topic.id,
-                        "name": node.topic.name,
-                        "depth": depth,
-                        "events": len(node.events),
-                        "proposed": node.topic.status == "proposed",
-                        "branches": list(node.topic.branches),
-                    }
-                )
-                walk(node.children, depth + 1)
+                row = {
+                    "id": node.topic.id,
+                    "name": node.topic.name,
+                    "depth": depth,
+                    "events": 0,
+                    "proposed": node.topic.status == "proposed",
+                    "branches": list(node.topic.branches),
+                }
+                topics.append(row)
+                below = walk(node.children, depth + 1) | {e.id for e in node.events}
+                row["events"] = len(below)
+                seen |= below
+            return seen
 
         nr.ensure_seeded()
         walk(get_tree(nr.store), 0)
@@ -299,6 +324,7 @@ def create_app(newsroom: Newsroom | None = None) -> FastAPI:
             {
                 "id": s.id,
                 "name": s.name,
+                "outlet": outlet_of(s.name),
                 "language": s.language,
                 "feed_url": s.feed_url,
                 "official": s.official,

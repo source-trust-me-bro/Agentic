@@ -24,6 +24,8 @@ from newsroom.parallel import run_parallel
 
 MAX_TOPICS_PER_CALL = 120
 MAX_EVENTS_PER_TOPIC = 5
+# One event under two topics can be a fluke of keywords; two shared events is a real overlap.
+MIN_SHARED_EVENTS = 2
 
 
 class TopicLink(BaseModel):
@@ -56,11 +58,16 @@ class ConnectorAgent(Agent):
             return 0
         events = [e for e in self.store.find(Event) if e.status != "merged"]
 
-        pairs: dict[tuple[str, str], str] = {}
+        shared: dict[tuple[str, str], list[str]] = {}
         for event in events:
             ids = sorted({tid for tid in event.topic_ids if tid in topics})
             for a, b in combinations(ids, 2):
-                pairs.setdefault((a, b), f"both cover the event '{event.title[:80]}'")
+                shared.setdefault((a, b), []).append(event.title[:80])
+        pairs: dict[tuple[str, str], str] = {
+            pair: f"{len(titles)} events cover both, e.g. '{titles[0]}'"
+            for pair, titles in shared.items()
+            if len(titles) >= MIN_SHARED_EVENTS
+        }
         for (a, b), reason in self._model_pairs(topics, events).items():
             pairs.setdefault((a, b), reason)
 

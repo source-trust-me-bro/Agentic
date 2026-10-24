@@ -393,3 +393,66 @@ def test_decisions_are_traced_with_reasons():
     traces = [t for t in store.traces() if t.agent == "knowledge_architect"]
     assert traces
     assert all(t.reason for t in traces if t.step in {"attach", "create_event"})
+
+
+def _filed_under(agent, store, title, summary="", content=None):
+    article = Article(
+        id="a-" + title[:10],
+        source_id="s",
+        source_name="Test",
+        url="https://example.test/" + title[:10],
+        title=title,
+        summary=summary,
+        content=content,
+        language="en",
+        published_at=datetime.fromisoformat("2026-10-22T08:00:00+00:00"),
+    )
+    agent.process([article])
+    event = event_of(store, article.id)
+    return {store.get(Topic, t).name for t in event.topic_ids}
+
+
+def test_a_passing_word_in_the_body_does_not_file_news_under_a_topic():
+    agent, store = make_agent()
+    topics = _filed_under(
+        agent,
+        store,
+        "Oulu cut its electricity use well beyond the target",
+        content="The campaign included an event at the library and a sport day for pupils.",
+    )
+    assert "Culture and everyday life" not in topics
+
+
+def test_the_headline_decides_what_the_news_is_about():
+    agent, store = make_agent()
+    topics = _filed_under(agent, store, "Residence permit processing times published by Migri")
+    assert "Residence permits and visas" in topics
+
+
+def test_topic_keywords_from_the_config_replace_stale_stored_ones():
+    store = MemoryStore()
+    seed_topics(store)
+    topic = next(t for t in store.find(Topic) if t.name == "Culture and everyday life")
+    topic.keywords = ["event"]
+    store.put(topic)
+    seed_topics(store)
+    assert "event" not in store.get(Topic, topic.id).keywords
+
+
+def test_retree_refiles_events_and_clears_stale_links():
+    agent, store = make_agent()
+    _filed_under(agent, store, "Residence permit processing times published by Migri")
+    event = store.find(Event)[0]
+    event.topic_ids = [next(t.id for t in store.find(Topic) if t.name == "Transport")]
+    store.put(event)
+    topic = store.find(Topic)[0]
+    topic.branches = ["topic_finland"]
+    store.put(topic)
+
+    report = agent.retree()
+
+    assert report["refiled"] == 1
+    assert {store.get(Topic, t).name for t in store.find(Event)[0].topic_ids} == {
+        "Residence permits and visas"
+    }
+    assert all(not t.branches for t in store.find(Topic))

@@ -271,7 +271,7 @@ class Newsroom:
             finish_linking = start_in_background(link, "connector")
 
         wanted = community_ids or list(self.communities)
-        progress.begin("select", total=len(wanted), detail="Asking each community's editor")
+        progress.begin("select", total=len(wanted), detail="The news editor agent weighs each community's needs")
 
         def select(community_id: str) -> list[Pitch]:
             try:

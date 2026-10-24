@@ -56,6 +56,8 @@ MIN_AGREEING_KINDS = 2  # independent signal kinds that must agree (number/entit
 WINDOW_HOURS = 72  # a report only joins an event active within this window
 CONFIRMED_MIN_OUTLETS = 2  # independent outlets needed for status "confirmed"
 MAX_TOPICS_PER_EVENT = 2
+HEADLINE_WEIGHT = 3  # a keyword in a headline or summary counts three times a body mention
+MIN_TOPIC_SCORE = 3  # one headline keyword, or three different keywords in the body
 # A topic the agents proposed becomes active by itself (no human) once this much of the news
 # backs it: enough different events, reported by enough different outlets.
 MIN_EVENTS_TO_ACTIVATE = 2
@@ -979,11 +981,7 @@ class KnowledgeArchitectAgent(Agent):
         event = self.store.get(Event, event_id)
         if event is None:
             return []
-        text = " ".join(
-            [event.title, event.summary, " ".join(event.entities)]
-            + [article_text(a) for a in self._articles_of(event)]
-        )
-        matched = self._match_topics(text)
+        matched = self._match_event_topics(event)
         proposals: list[TreeProposal] = []
         fresh = [t for t in matched if t.id not in event.topic_ids]
         if fresh:
@@ -1019,18 +1017,34 @@ class KnowledgeArchitectAgent(Agent):
                 )
         return proposals
 
-    def _match_topics(self, text: str) -> list[Topic]:
+    def _match_event_topics(self, event: Event) -> list[Topic]:
+        """Topics for an event. What the reports are *about* is in their headlines and summaries;
+        body text only confirms, because a long article mentions many things in passing."""
+
+        articles = self._articles_of(event)
+        headline = " ".join(
+            [event.title, event.summary] + [f"{a.title} {a.summary or ''}" for a in articles]
+        )
+        body = " ".join(
+            [" ".join(event.entities)] + [(a.content or "") for a in articles if a.access == "full"]
+        )
+        return self._match_topics(headline, body)
+
+    def _match_topics(self, headline: str, body: str = "") -> list[Topic]:
         topics = [t for t in self.store.find(Topic) if t.status == "active"]
+        head, rest = headline.casefold(), body.casefold()
         scored: list[tuple[int, Topic]] = []
-        lowered = text.casefold()
         for topic in topics:
-            hits = {kw for kw in topic.keywords if _keyword_hit(lowered, kw)}
-            if hits:
-                scored.append((len(hits), topic))
+            in_head = {kw for kw in topic.keywords if _keyword_hit(head, kw)}
+            in_body = {kw for kw in topic.keywords if _keyword_hit(rest, kw)} - in_head
+            score = HEADLINE_WEIGHT * len(in_head) + len(in_body)
+            # One passing mention in the body is not evidence that the news belongs here.
+            if score >= MIN_TOPIC_SCORE:
+                scored.append((score, topic))
         if not scored:
             return []
         best = max(score for score, _ in scored)
-        matched = [(s, t) for s, t in scored if s >= max(1, math.ceil(best * 0.5))]
+        matched = [(s, t) for s, t in scored if s >= max(MIN_TOPIC_SCORE, math.ceil(best * 0.5))]
         # Prefer the specific branch, but only when it matches at least as strongly as its
         # parent; a weak child must not hide a parent that fits much better.
         by_id = {t.id: s for s, t in matched}
@@ -1041,6 +1055,31 @@ class KnowledgeArchitectAgent(Agent):
         ]
         matched.sort(key=lambda pair: (-pair[0], pair[1].name))
         return [t for _, t in matched[:MAX_TOPICS_PER_EVENT]]
+
+    def retree(self) -> dict[str, int]:
+        """File every existing event again with the current rules. Events keep their reports;
+        only the topic filing changes. Topic links are cleared so the Connector rebuilds them
+        from the corrected filing."""
+
+        events = [e for e in self.store.find(Event) if e.status != "merged"]
+        moved = 0
+        for event in events:
+            ids = [t.id for t in self._match_event_topics(event)]
+            if ids != event.topic_ids:
+                self.trace(
+                    "retree",
+                    "refiled",
+                    f"{event.topic_ids} -> {ids}",
+                    event_id=event.id,
+                )
+                event.topic_ids = ids
+                self.store.put(event)
+                moved += 1
+        for topic in self.store.find(Topic):
+            if topic.branches:
+                topic.branches = []
+                self.store.put(topic)
+        return {"events": len(events), "refiled": moved}
 
     # ----------------------------------------------------------- validate & commit
 
