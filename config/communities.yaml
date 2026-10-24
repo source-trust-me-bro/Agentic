@@ -1,0 +1,85 @@
+# Communities the newsroom serves. Each one is run WITH its members: trusted voices
+# review stories in their language and domain, and community members can ask
+# questions, send tips and request corrections (see docs/COMMUNITY.md).
+#
+# Language tiers
+#   A  strong machine translation  -> spot checks, full review for high-risk stories
+#   B  usable but uneven            -> a language reviewer approves every high-risk story
+#   C  weak (Sámi languages)        -> the machine only assists a human translator;
+#                                      nothing is published without a language reviewer
+
+communities:
+  - id: oulu-international
+    name: International newcomers in Oulu
+    description: >
+      Work-based immigrants and international professionals (for example in Oulu's tech
+      sector), international students and researchers, and their families.
+    regions: [Oulu, Oulun seutu]
+    interests: [housing, work, healthcare, education, transport, taxes, residence permits, daily life]
+    languages:
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: uk, label: Українська, tier: A, human_review: required}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+    needs_weights: {usefulness: 1.0, understanding: 0.9, information: 0.7, community: 0.6, emotion: 0.2, break: 0.1}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-oulu-student-buddy, name: Student union buddy, role: international student buddy, can_review: [community_reviewer], languages: [en]}
+      - {id: tv-oulu-migration-adviser, name: Migration adviser, role: independent migration adviser, can_review: [subject_expert, community_reviewer], languages: [en, uk]}
+      - {id: tv-oulu-uk-volunteer, name: Ukrainian community volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [uk]}
+      - {id: tv-oulu-ar-volunteer, name: Arabic-speaking community volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [ar]}
+      - {id: tv-oulu-health-nurse, name: Public health nurse, role: subject adviser for health stories, can_review: [subject_expert], languages: [en]}
+    cultural_context:
+      - "Many Finnish public services require strong online identification, which newcomers may not have yet."
+      - "Finnish municipal decisions are published on official sites and are often only in Finnish and Swedish."
+
+  - id: lapland-seasonal
+    name: Seasonal tourism workers in Lapland
+    description: >
+      Workers who arrive for a winter season (a few months) at ski resorts and tourist
+      destinations and quickly need working conditions, housing, healthcare, transport,
+      safety and everyday local life.
+    regions: [Levi, Ylläs, Rovaniemi, Saariselkä, Lapland]
+    interests: [working conditions, housing, healthcare, transport, safety, winter driving, daily life]
+    languages:
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: ru, label: Русский, tier: A, human_review: required}
+    needs_weights: {usefulness: 1.0, information: 0.8, understanding: 0.6, community: 0.7, break: 0.4, emotion: 0.2}
+    lifecycle: {seasonal: true, typical_stay_days: 120, onboarding_window_days: 7}
+    channels:
+      - {kind: messaging, label: Group message, max_chars: 600}
+      - {kind: audio, label: Short audio briefing}
+      - {kind: web, label: Web feed}
+    trusted_voices:
+      - {id: tv-lapland-hr, name: Resort HR officer, role: seasonal worker coordinator, can_review: [community_reviewer], languages: [en]}
+      - {id: tv-lapland-union, name: Union representative, role: hospitality union representative, can_review: [subject_expert], languages: [en]}
+      - {id: tv-lapland-ru-volunteer, name: Russian-speaking seasonal worker, role: returning seasonal worker and translator, can_review: [language_reviewer, community_reviewer], languages: [ru]}
+    cultural_context:
+      - "Tipping is not expected in Finland, and wages are set by collective agreements."
+      - "Winter driving needs winter tyres by law between December and February; many seasonal workers have never driven on ice."
+
+  - id: sapmi-north
+    name: North Sámi speakers
+    description: >
+      Speakers of North Sámi in Finland. There is very little local news in the Sámi
+      languages and the language lives through everyday use, so quality and respect for
+      the language community come before volume.
+    regions: [Utsjoki, Inari, Enontekiö, Sodankylä, Lapland]
+    interests: [language, education, reindeer herding, culture, services, local decisions]
+    languages:
+      - {code: se, label: Davvisámegiella, tier: C, human_review: human_only}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+    needs_weights: {community: 1.0, usefulness: 0.7, information: 0.7, understanding: 0.6, emotion: 0.5, break: 0.3}
+    lifecycle: {seasonal: false, onboarding_window_days: 0}
+    channels:
+      - {kind: messaging, label: Group message, max_chars: 600}
+      - {kind: audio, label: Short audio briefing}
+      - {kind: web, label: Web feed}
+    trusted_voices:
+      - {id: tv-sapmi-teacher, name: Sámi language teacher, role: North Sámi language teacher, can_review: [language_reviewer, community_reviewer], languages: [se, fi]}
+      - {id: tv-sapmi-parliament, name: Sámi Parliament information officer, role: information officer, can_review: [community_reviewer, subject_expert], languages: [se, fi]}
+    cultural_context:
+      - "Sámi names, places and terms must follow community usage, not machine transliteration."

@@ -1,0 +1,175 @@
+# Sources the Assignment Desk (monitor agent) watches.
+#
+# The same real-world news usually appears on several of these. The Knowledge Architect
+# clusters those reports into one Event, so the newsroom investigates the event once and
+# can show how many independent outlets reported it (corroboration, not repetition).
+#
+# access
+#   full           the feed or page gives us the article text
+#   metadata_only  full text is behind a paywall. We use only the public headline,
+#                  summary and link, and NEVER try to get around the paywall. Switch to
+#                  "full" only if the publisher grants licensed full-text access (ask the
+#                  organisers). Facts then come from free full-text sources (Yle, BBC,
+#                  official bodies); this outlet still counts as having reported the event.
+#
+# reuse
+#   link_and_summarize     summarise and link back; never republish full text
+#   licensed               content the newsroom may translate and republish
+#   official_public_info   public information from an authority
+
+sources:
+  # ---- Kaleva (paywalled): public feeds listed at https://www.kaleva.fi/rss ----------
+  - id: kaleva-oulun-seutu
+    name: Kaleva
+    feed_url: https://kaleva.fi/feedit/rss/managed-listing/oulun-seutu/
+    language: fi
+    region: Oulu
+    access: metadata_only
+    reuse: link_and_summarize
+    notes: Oulun seutu. Paywalled; headline, summary and link only.
+  - id: kaleva-pohjois-suomi
+    name: Kaleva
+    feed_url: https://kaleva.fi/feedit/rss/managed-listing/pohjois-suomi/
+    language: fi
+    region: Lapland
+    access: metadata_only
+    reuse: link_and_summarize
+    notes: Pohjois-Suomi. Paywalled; headline, summary and link only.
+  - id: kaleva-latest
+    name: Kaleva
+    feed_url: https://kaleva.fi/feedit/rss/managed-listing/rss-uusimmat/
+    language: fi
+    access: metadata_only
+    reuse: link_and_summarize
+    notes: 25 latest. Paywalled; headline, summary and link only.
+
+  # ---- Yle (public broadcaster, free full text): feeds listed at https://yle.fi/rss ---
+  - id: yle-news-en
+    name: Yle News
+    feed_url: https://yle.fi/rss/news
+    language: en
+    reuse: link_and_summarize
+    notes: English. Main cross-language corroboration source for Finnish stories.
+  - id: yle-tuoreimmat
+    name: Yle Uutiset
+    feed_url: https://yle.fi/rss/uutiset/tuoreimmat
+    language: fi
+    reuse: link_and_summarize
+  - id: yle-pohjois-pohjanmaa
+    name: Yle Pohjois-Pohjanmaa
+    feed_url: https://yle.fi/rss/t/18-148154/fi
+    language: fi
+    region: Oulu
+    reuse: link_and_summarize
+    notes: Closest regional feed to Oulu.
+  - id: yle-lappi
+    name: Yle Lappi
+    feed_url: https://yle.fi/rss/t/18-139752/fi
+    language: fi
+    region: Lapland
+    reuse: link_and_summarize
+  - id: yle-selkouutiset
+    name: Yle Selkouutiset
+    feed_url: https://yle.fi/rss/selkouutiset
+    language: fi
+    reuse: link_and_summarize
+    notes: Easy Finnish; useful for learners and as plain-language reference.
+  - id: yle-sapmi
+    name: Yle Sápmi
+    feed_url: https://yle.fi/rss/sapmi
+    language: se
+    region: Lapland
+    reuse: link_and_summarize
+    notes: Sámi-language news; reference for the North Sámi community, reviewed by humans only.
+  - id: yle-novyny
+    name: Yle Новини
+    feed_url: https://yle.fi/rss/novyny
+    language: uk
+    reuse: link_and_summarize
+    notes: Ukrainian-language reference for the Ukrainian-speaking community.
+  - id: yle-novosti
+    name: Yle Новости
+    feed_url: https://yle.fi/rss/novosti
+    language: ru
+    reuse: link_and_summarize
+  - id: yle-svenska
+    name: Svenska Yle
+    feed_url: https://svenska.yle.fi/rss/senaste-nytt
+    language: sv
+    reuse: link_and_summarize
+
+  # ---- BBC: independent outside coverage used for corroboration -------------------------
+  - id: bbc-europe
+    name: BBC News
+    feed_url: http://feeds.bbci.co.uk/news/world/europe/rss.xml
+    language: en
+    reuse: link_and_summarize
+    notes: Independent outside coverage; never republished in full.
+  - id: bbc-world
+    name: BBC News
+    feed_url: http://feeds.bbci.co.uk/news/world/rss.xml
+    language: en
+    reuse: link_and_summarize
+
+  # ---- Official bodies: where decisions start. Feeds verified to return RSS. -----------
+  - id: oulu-city
+    name: City of Oulu
+    feed_url: "https://www.ouka.fi/news/feed?region=All&topic=All&audience=All"
+    language: fi
+    official: true
+    region: Oulu
+    reuse: official_public_info
+    notes: City news. Listed on https://www.ouka.fi/rss.
+  - id: oulu-notices
+    name: City of Oulu
+    feed_url: "https://asiakirjat.ouka.fi/ktwebscr/kuul_rssfeed.htm"
+    language: fi
+    official: true
+    region: Oulu
+    reuse: official_public_info
+    notes: Official notices and announcements (kuulutukset), where council and board decisions are announced.
+  - id: oulu-transport
+    name: Oulu Region Public Transport (OSL)
+    feed_url: "https://www.osl.fi/feed/"
+    language: fi
+    official: true
+    region: Oulu
+    reuse: official_public_info
+    notes: Timetable and fare changes. Useful for newcomers.
+  - id: oulu-mun-oulu
+    name: Mun Oulu (City of Oulu magazine)
+    feed_url: "https://www.munoulu.fi/feed/"
+    language: fi
+    official: true
+    region: Oulu
+    reuse: official_public_info
+    notes: The city's own magazine. Treat as the city's voice, not independent reporting.
+  - id: oulu-business
+    name: BusinessOulu
+    feed_url: "https://www.businessoulu.com/ajankohtaista/feed/"
+    language: fi
+    official: true
+    region: Oulu
+    reuse: official_public_info
+    notes: The city's business development agency; relevant to international professionals.
+  - id: migri-press
+    name: Finnish Immigration Service (Migri)
+    feed_url: "https://migri.fi/en/press-releases?p_p_id=com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_h86npU2Dqv2l&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=getRSS&p_p_cacheability=cacheLevelPage"
+    language: en
+    official: true
+    reuse: official_public_info
+    notes: Press releases. Primary source for permit and migration stories.
+  - id: migri-bulletins
+    name: Finnish Immigration Service (Migri)
+    feed_url: "https://migri.fi/en/customer-bulletins?p_p_id=com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_DaWOHz9tPh9q&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=getRSS&p_p_cacheability=cacheLevelPage"
+    language: en
+    official: true
+    reuse: official_public_info
+    notes: Customer bulletins, such as changes that affect applicants.
+  - id: migri-exceptions
+    name: Finnish Immigration Service (Migri)
+    feed_url: "https://migri.fi/en/press-releases-and-bulletins?p_p_id=com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_5a29OSeGdYT8&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=getRSS&p_p_cacheability=cacheLevelPage"
+    language: en
+    official: true
+    reuse: official_public_info
+    notes: Exception info, such as changes to regular service hours.

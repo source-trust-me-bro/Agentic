@@ -1,0 +1,43 @@
+# Starting shape of the news tree. These are illustrative branches, not a fixed taxonomy:
+# the Knowledge Architect may propose new branches as events develop, and a human editor
+# approves restructuring (new top-level branches, merges, moves).
+#
+# Topics are persistent subject areas. Events (one real-world development, with all the
+# reports about it) hang under topics. Articles hang under events.
+
+topics:
+  - name: Local life · Oulu region
+    keywords: [oulu, oulun, oulussa, pohjois-pohjanmaa, northern ostrobothnia]
+    children:
+      - {name: Housing and rent, keywords: [housing, rent, rental, landlord, deposit, asunto, vuokra, vuokralainen, takuuvuokra]}
+      - {name: Work and employment, keywords: [job, work, employer, wage, salary, contract, työ, työpaikka, palkka, työsopimus]}
+      - {name: Healthcare and wellbeing, keywords: [health, hospital, doctor, clinic, vaccine, terveys, sairaala, lääkäri, rokote]}
+      - {name: Transport, keywords: [bus, train, transport, ticket, route, joukkoliikenne, bussi, juna, lippu]}
+      - {name: Education and research, keywords: [university, student, school, research, yliopisto, opiskelija, koulu, tutkimus]}
+  - name: Lapland and tourism
+    keywords: [lapland, lappi, levi, rovaniemi, ylläs, saariselkä, tourism, matkailu]
+    children:
+      - {name: Seasonal work and housing, keywords: [seasonal, season, resort, accommodation, kausityö, kausityöntekijä, majoitus]}
+      - {name: Winter safety and driving, keywords: [winter, snow, ice, avalanche, driving, talvi, lumi, jää, liukas, ajaminen]}
+  - name: Immigration and rights
+    keywords: [immigration, migrant, permit, visa, citizenship, asylum, migri, maahanmuutto, oleskelulupa, kansalaisuus]
+    children:
+      - {name: Residence permits and visas, keywords: [residence permit, visa, processing time, migri, oleskelulupa, viisumi, käsittelyaika]}
+      - {name: Integration and language, keywords: [integration, finnish language, course, kotoutuminen, kielikurssi]}
+  - name: Finland
+    keywords: [finland, finnish, suomi, helsinki, eduskunta, parliament]
+    children:
+      - {name: Politics and government, keywords: [government, parliament, minister, budget, hallitus, eduskunta, ministeri, budjetti]}
+      - {name: Economy and prices, keywords: [economy, inflation, prices, tax, energy, electricity, talous, inflaatio, hinta, vero, sähkö]}
+  - name: Europe and the world
+    keywords: [europe, eu, ukraine, russia, world, eurooppa, ukraina, venäjä, ulkomaat]
+    children:
+      - {name: Ukraine and Russia, keywords: [ukraine, russia, war, ukraina, venäjä, sota]}
+      - {name: EU policy, keywords: [european union, eu, brussels, commission, euroopan unioni, komissio]}
+  - name: Sámi language and culture
+    keywords: [sámi, sami, saami, saame, saamelais, saamen, utsjoki, inari, sápmi]
+    children:
+      - {name: Sámi languages and education, keywords: [language, school, daycare, teaching, kieli, päiväkoti, opetus, saamenkielinen]}
+      - {name: Sámi rights and services, keywords: [sámi parliament, rights, services, saamelaiskäräjät, oikeudet, palvelut]}
+  - name: Culture and everyday life
+    keywords: [culture, event, festival, sport, kulttuuri, tapahtuma, urheilu]

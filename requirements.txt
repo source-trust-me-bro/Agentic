@@ -1,0 +1,20 @@
+# Orchestration and model layer
+langgraph==1.2.17
+langgraph-checkpoint-sqlite==3.1.2
+google-genai==2.33.0
+
+# Data, sources and API
+pydantic==2.14.1
+pydantic-settings==2.16.1
+pymongo==4.19.0
+httpx==0.28.1
+feedparser==6.0.14
+trafilatura==2.3.1
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+pyyaml>=6.0
+
+# Development and test tooling
+pytest==9.1.1
+mongomock>=4.3
+ruff==0.17.2

@@ -1,0 +1,59 @@
+# Curated official bodies the Source Librarian attaches to stories by topic.
+#
+# These are REFERENCES: the authority readers should check for the current rules. Attaching
+# one does not verify any claim in a story. Stories label them "official reference added by
+# the newsroom". Editors review them and add more. Homepages only: no guessed deep links.
+# `topics` use the names in policy.yaml (high_risk_topics / elevated_topics).
+
+official_sources:
+  - id: migri
+    name: Finnish Immigration Service (Migri)
+    url: https://migri.fi/en
+    topics: [residence_permit]
+    note: Residence permits, visas, citizenship and asylum.
+  - id: infofinland
+    name: InfoFinland (official multilingual information service)
+    url: https://www.infofinland.fi/en
+    topics: [residence_permit, employment, health, legal_rights, housing, money_and_tax]
+    note: Official guidance for people moving to Finland, in many languages.
+  - id: tyosuojelu
+    name: Occupational Safety and Health Administration
+    url: https://tyosuojelu.fi/en
+    topics: [employment]
+    note: Working conditions, working hours and employer duties.
+  - id: tem
+    name: Ministry of Economic Affairs and Employment
+    url: https://tem.fi/en
+    topics: [employment, residence_permit]
+  - id: kela
+    name: Kela (Social Insurance Institution of Finland)
+    url: https://www.kela.fi/
+    topics: [health, money_and_tax]
+    note: Health insurance and benefits.
+  - id: thl
+    name: Finnish Institute for Health and Welfare (THL)
+    url: https://thl.fi/en
+    topics: [health]
+  - id: vero
+    name: Finnish Tax Administration
+    url: https://www.vero.fi/en
+    topics: [money_and_tax, employment]
+  - id: suomifi
+    name: Suomi.fi (public services)
+    url: https://www.suomi.fi/
+    topics: [legal_rights, residence_permit, money_and_tax]
+  - id: police
+    name: Finnish Police
+    url: https://poliisi.fi/en
+    topics: [safety]
+    note: Safety and crime. Not attached to tenancy or employment stories.
+  - id: traficom
+    name: Traficom (Finnish Transport and Communications Agency)
+    url: https://www.traficom.fi/en
+    topics: [safety]
+    note: Road rules including winter tyres.
+  - id: city-oulu
+    name: City of Oulu
+    url: https://www.ouka.fi/en
+    topics: [housing, legal_rights]
+    regions: [Oulu]

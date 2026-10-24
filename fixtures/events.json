@@ -1,0 +1,81 @@
+[
+  {
+    "id": "ev-rov-kaleva", "set": "airport",
+    "source_id": "kaleva-pohjois-suomi", "source_name": "Kaleva", "access": "metadata_only",
+    "url": "https://example.test/kaleva/rovaniemi-talvilennot",
+    "title": "Rovaniemen lentoasema lisää talvilentoja – 24 uutta reittiä",
+    "summary": "Lentoyhtiöt avaavat talveksi 24 uutta reittiä Rovaniemelle.",
+    "content": null, "language": "fi", "published_at": "2026-10-22T08:00:00+00:00"
+  },
+  {
+    "id": "ev-rov-yle-fi", "set": "airport",
+    "source_id": "yle-lappi", "source_name": "Yle Lappi", "access": "full",
+    "url": "https://example.test/yle/rovaniemi-uudet-reitit",
+    "title": "Rovaniemen lentoasemalle tulee 24 uutta reittiä talveksi",
+    "summary": "Matkailun kysyntä kasvaa ja lentoyhtiöt lisäävät vuoroja.",
+    "content": "Rovaniemen lentoasemalle tulee talveksi 24 uutta reittiä. Lentoyhtiöt perustelevat lisäyksiä matkailijoiden kasvaneella kysynnällä Lapissa. Lentokentän mukaan talven matkustajamäärän odotetaan ylittävän edellisvuoden.",
+    "language": "fi", "published_at": "2026-10-22T09:30:00+00:00"
+  },
+  {
+    "id": "ev-rov-yle-en", "set": "airport",
+    "source_id": "yle-news-en", "source_name": "Yle News", "access": "full",
+    "url": "https://example.test/yle-news/rovaniemi-airport-routes",
+    "title": "Rovaniemi Airport adds 24 new winter routes",
+    "summary": "Airlines are adding flights as demand from tourists grows in Lapland.",
+    "content": "Rovaniemi Airport will add 24 new routes this winter. Airlines say demand from tourists is growing in Lapland, and the airport expects more passengers than last year.",
+    "language": "en", "published_at": "2026-10-22T11:00:00+00:00",
+    "syndication_key": "wire-rov-24"
+  },
+  {
+    "id": "ev-rov-bbc", "set": "airport",
+    "source_id": "bbc-europe", "source_name": "BBC News", "access": "full",
+    "url": "https://example.test/bbc/lapland-airport-winter-routes",
+    "title": "Lapland airport adds 24 winter routes as tourist demand grows",
+    "summary": "Finland's Rovaniemi airport expects record winter traffic.",
+    "content": "Finland's Rovaniemi airport says it will add 24 routes this winter as demand from tourists grows. The airport near the Arctic Circle expects record passenger numbers.",
+    "language": "en", "published_at": "2026-10-22T14:00:00+00:00"
+  },
+  {
+    "id": "ev-rov-copy", "set": "airport_copy",
+    "source_id": "helsinki-times", "source_name": "Helsinki Times", "access": "full",
+    "url": "https://example.test/helsinkitimes/rovaniemi-airport-routes",
+    "title": "Rovaniemi Airport adds 24 new winter routes",
+    "summary": "Airlines are adding flights as demand from tourists grows in Lapland.",
+    "content": "Rovaniemi Airport will add 24 new routes this winter. Airlines say demand from tourists is growing in Lapland.",
+    "language": "en", "published_at": "2026-10-22T15:00:00+00:00",
+    "syndication_key": "wire-rov-24"
+  },
+  {
+    "id": "ev-uts-fi", "set": "numbers_only",
+    "source_id": "kaleva-pohjois-suomi", "source_name": "Kaleva", "access": "metadata_only",
+    "url": "https://example.test/kaleva/utsjoki-asunnot",
+    "title": "Utsjoella 150 uutta asuntoa suunnitteilla",
+    "summary": "Kunta aikoo rakentaa 150 asuntoa vuoteen 2028 mennessä.",
+    "content": null, "language": "fi", "published_at": "2026-10-23T08:00:00+00:00"
+  },
+  {
+    "id": "ev-uts-en", "set": "numbers_only",
+    "source_id": "yle-news-en", "source_name": "Yle News", "access": "full",
+    "url": "https://example.test/yle-news/utsjoki-homes",
+    "title": "150 new homes planned in Utsjoki",
+    "summary": "The municipality plans to build 150 homes by 2028.",
+    "content": "The municipality of Utsjoki plans to build 150 homes by 2028.",
+    "language": "en", "published_at": "2026-10-23T10:00:00+00:00"
+  },
+  {
+    "id": "ev-oulu-a", "set": "oulu_unrelated",
+    "source_id": "kaleva-oulun-seutu", "source_name": "Kaleva", "access": "metadata_only",
+    "url": "https://example.test/kaleva/oulu-kirjasto",
+    "title": "Oulun pääkirjasto remontoidaan kesällä",
+    "summary": "Kirjaston remontti alkaa kesäkuussa ja kestää kaksi kuukautta.",
+    "content": null, "language": "fi", "published_at": "2026-10-23T09:00:00+00:00"
+  },
+  {
+    "id": "ev-oulu-b", "set": "oulu_unrelated",
+    "source_id": "kaleva-oulun-seutu", "source_name": "Kaleva", "access": "metadata_only",
+    "url": "https://example.test/kaleva/oulu-tori",
+    "title": "Oulun kauppatorin markkinat siirtyvät lokakuussa",
+    "summary": "Torikauppiaat siirtyvät väliaikaisesti satamaan.",
+    "content": null, "language": "fi", "published_at": "2026-10-23T09:30:00+00:00"
+  }
+]
