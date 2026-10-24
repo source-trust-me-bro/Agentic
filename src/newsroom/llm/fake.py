@@ -37,6 +37,7 @@ class FakeLLM:
         prompt: str,
         schema: type[T],
         payload: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
     ) -> T:
         handler = self._handlers.get(task)
         if handler is None:

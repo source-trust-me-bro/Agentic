@@ -32,4 +32,5 @@ class LLM(Protocol):
         prompt: str,
         schema: type[T],
         payload: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
     ) -> T: ...

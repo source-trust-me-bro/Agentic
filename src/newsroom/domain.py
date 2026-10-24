@@ -222,6 +222,10 @@ class Claim(Doc):
     source_article_id: str | None = None
     evidence: list[EvidenceLink] = Field(default_factory=list)
     unknowns: list[str] = Field(default_factory=list)
+    # Investigation bookkeeping: which search hints have already been checked and how many
+    # assessment calls this claim has used. Repeated rounds skip unchanged claims.
+    assessed_hints: list[str] = Field(default_factory=list)
+    assessed_rounds: int = 0
     # Deliberately not a probability. See the trust section of the README.
     uncertainty_note: str | None = None
 

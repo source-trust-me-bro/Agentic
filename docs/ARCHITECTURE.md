@@ -78,6 +78,19 @@ Models only propose structured text, scores and entities. Output is validated ag
 `max_investigation_rounds`, `max_revision_rounds`, `max_pitches_per_cycle` (settings). Each loop
 traces why it stopped. The graph is checkpointed in SQLite, so a review can happen days later.
 
+Context and time are bounded too, because events grow across cycles:
+
+* `max_articles_per_prompt` keeps one prompt from growing with the archive; official and newest
+  reports are kept first.
+* `llm_max_input_tokens` is a backstop in the model layer: an oversized prompt is refused with
+  the same `LLMError` agents already handle, instead of a provider timeout and retries.
+* `max_evidence_assessments_per_story` caps claim checks across investigation rounds, and a
+  claim is not re-assessed when the search hints have not changed.
+* Each model call gets only the time left in the cycle budget. The monitor checks that budget
+  between sources and articles, fetches article bodies in parallel, and caches robots.txt per
+  host. The connector stops submitting when the cycle is spent.
+* Every cycle writes prompt size and call latency per task to the audit trail (`model_layer`).
+
 ## Model layer
 
 `LLM.generate(task, system, prompt, schema, payload)`. Gemini uses prompts and the schema. The

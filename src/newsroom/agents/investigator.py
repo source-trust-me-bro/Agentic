@@ -22,7 +22,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from newsroom import guards
-from newsroom.agents.base import Agent
+from newsroom.agents.base import Agent, article_excerpt, prompt_articles
 from newsroom.domain import (
     Article,
     Claim,
@@ -145,10 +145,37 @@ class InvestigatorAgent(Agent):
         hints = prior.search_hints if prior else []
 
         lookup = dict(articles)
+        assessment_cap = self.settings.max_evidence_assessments_per_story
+        assessments = 0
         for claim in claims:
             if claim.status in (ClaimStatus.VERIFIED, ClaimStatus.DISPUTED):
                 continue
-            self._corroborate(claim, lookup, hints)
+            # Re-checking a claim with the same hints and no new evidence used to cost one
+            # model call per claim per round. Nothing can have changed, so do not ask again.
+            if round_no > 1 and claim.assessed_hints == list(hints):
+                self.trace(
+                    "assess",
+                    "skipped_unchanged",
+                    "same search hints as the previous round; no new evidence to ask about",
+                    claim_id=claim.id,
+                    pitch_id=pitch.id,
+                    round=round_no,
+                )
+                continue
+            if assessments >= assessment_cap:
+                self.trace(
+                    "assess",
+                    "capped",
+                    f"assessment cap of {assessment_cap} call(s) per story reached",
+                    claim_id=claim.id,
+                    pitch_id=pitch.id,
+                    round=round_no,
+                )
+                break
+            if self._corroborate(claim, lookup, hints):
+                assessments += 1
+                claim.assessed_hints = list(hints)
+                claim.assessed_rounds += 1
             self._decide(claim, lookup)
             self.store.put(claim)
             self.trace(
@@ -175,6 +202,17 @@ class InvestigatorAgent(Agent):
     def _extract(self, pitch: Pitch, articles: list[Article]) -> list[Claim]:
         if not articles:
             return []
+        all_articles = articles
+        articles = prompt_articles(articles, self.settings.max_articles_per_prompt)
+        if len(articles) < len(all_articles):
+            self.trace(
+                "extract",
+                "trimmed",
+                f"{len(all_articles) - len(articles)} older report(s) left out of the prompt; "
+                f"context budget keeps {self.settings.max_articles_per_prompt}",
+                pitch_id=pitch.id,
+            )
+        excerpt_chars = self.settings.extract_article_chars
         payload = {
             "articles": [
                 {
@@ -182,7 +220,7 @@ class InvestigatorAgent(Agent):
                     "title": a.title,
                     "summary": a.summary,
                     # Paywalled outlets: only what the feed published.
-                    "content": (a.content or "")[:4000] if a.access == "full" else None,
+                    "content": (a.content or "")[:excerpt_chars] if a.access == "full" else None,
                     "source_name": a.source_name,
                     "official": a.official,
                     "access": a.access,
@@ -193,10 +231,7 @@ class InvestigatorAgent(Agent):
         }
         blocks = "\n\n".join(
             f"Report {a.id} ({a.source_name}):\n"
-            + guards.wrap_untrusted(
-                f"{a.title}\n{a.summary or ''}\n{(a.content or '')[:4000] if a.access == 'full' else ''}",
-                a.id,
-            )
+            + guards.wrap_untrusted(article_excerpt(a, excerpt_chars), a.id)
             for a in articles
         )
         system = (
@@ -252,7 +287,9 @@ class InvestigatorAgent(Agent):
 
     # ----------------------------------------------------------- corroboration
 
-    def _corroborate(self, claim: Claim, lookup: dict[str, Article], hints: list[str]) -> None:
+    def _corroborate(self, claim: Claim, lookup: dict[str, Article], hints: list[str]) -> bool:
+        """Ask the model about other reports. False when no model call was made."""
+
         source = lookup.get(claim.source_article_id or "") or (
             self.store.get(Article, claim.source_article_id) if claim.source_article_id else None
         )
@@ -274,7 +311,9 @@ class InvestigatorAgent(Agent):
                 continue
             candidates.append(article)
         if not candidates:
-            return
+            return False
+        candidates = prompt_articles(candidates, self.settings.max_articles_per_prompt)
+        excerpt_chars = self.settings.extract_article_chars
 
         payload: dict[str, Any] = {
             "claim": {"id": claim.id, "text": claim.text},
@@ -283,7 +322,7 @@ class InvestigatorAgent(Agent):
                     "article_id": a.id,
                     "title": a.title,
                     "summary": a.summary,
-                    "content": (a.content or "")[:4000] if a.access == "full" else None,
+                    "content": (a.content or "")[:excerpt_chars] if a.access == "full" else None,
                     "source_name": a.source_name,
                     "official": a.official,
                     "access": a.access,
@@ -294,10 +333,7 @@ class InvestigatorAgent(Agent):
         }
         blocks = "\n\n".join(
             f"Candidate {a.id} ({a.source_name}):\n"
-            + guards.wrap_untrusted(
-                f"{a.title}\n{a.summary or ''}\n{(a.content or '')[:4000] if a.access == 'full' else ''}",
-                a.id,
-            )
+            + guards.wrap_untrusted(article_excerpt(a, excerpt_chars), a.id)
             for a in candidates
         )
         system = (
@@ -318,7 +354,7 @@ class InvestigatorAgent(Agent):
             self.trace(
                 "assess", "skipped", f"model unavailable: {str(exc)[:160]}", claim_id=claim.id
             )
-            return
+            return False
 
         by_id = {a.id: a for a in candidates}
         for item in result.assessments:
@@ -356,6 +392,7 @@ class InvestigatorAgent(Agent):
                     quote=quote,
                 )
             )
+        return True
 
     @staticmethod
     def _independent(source: Article | None, candidate: Article) -> bool:

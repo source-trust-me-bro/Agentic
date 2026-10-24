@@ -22,9 +22,13 @@ class CycleLimits:
     deadline: float | None = None
     active: bool = False
     triggered: str | None = None  # why the cycle was cut short, if it was
+    # Per-task model usage, recorded so a cycle can report prompt size and time. This is
+    # what makes a context-window regression visible instead of silent.
+    usage: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def start(self) -> None:
         self.calls = 0
+        self.usage = {}
         self.cancel.clear()
         self.deadline = time.monotonic() + self.max_seconds
         self.triggered = None
@@ -32,6 +36,25 @@ class CycleLimits:
 
     def finish(self) -> None:
         self.active = False
+
+    def remaining_seconds(self) -> float | None:
+        """Seconds left in the cycle, or None when no cycle deadline is enforced."""
+
+        if not self.active or self.deadline is None:
+            return None
+        return max(0.0, self.deadline - time.monotonic())
+
+    def record_model_call(
+        self, task: str, *, input_chars: int, input_tokens: int, seconds: float
+    ) -> None:
+        entry = self.usage.setdefault(
+            task,
+            {"calls": 0.0, "input_chars": 0.0, "input_tokens": 0.0, "seconds": 0.0},
+        )
+        entry["calls"] += 1
+        entry["input_chars"] += input_chars
+        entry["input_tokens"] += input_tokens
+        entry["seconds"] += seconds
 
     def stop_reason(self) -> str | None:
         """Why the cycle must stop now, or None. Only enforced while a cycle is running."""

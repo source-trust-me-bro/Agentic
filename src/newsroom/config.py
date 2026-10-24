@@ -30,6 +30,22 @@ class Settings(BaseSettings):
     # ~80 s; raise it (medium/high) only where reasoning quality matters more than time.
     gemini_thinking_level: Literal["low", "medium", "high"] = "low"
     llm_timeout_seconds: float = 120.0
+    # Context-window protection. A prompt above this estimate is refused by the model layer
+    # (chars/4 is a deliberately cheap approximation for mixed-language text). Agents also
+    # trim their own inputs well below this: this is the backstop, not the target.
+    llm_max_input_tokens: int = 30000
+    # How many articles one prompt may contain. Events grow across cycles, so prompts must
+    # not grow with them; newest official/full-text reports are kept first.
+    max_articles_per_prompt: int = 12
+    # Chars of one article offered to the claim extractor / the explainer.
+    extract_article_chars: int = 4000
+    explain_article_chars: int = 1500
+    # Cap on evidence-checking model calls for one story, across all investigation rounds.
+    max_evidence_assessments_per_story: int = 12
+    # Article bodies are fetched in parallel (robots.txt is cached per host).
+    max_fetch_workers: int = 4
+    # Topic matching is bounded too: an event may have hundreds of reports over time.
+    topic_match_chars: int = 20000
 
     # Storage. Without MONGODB_URI the newsroom keeps everything in memory.
     mongodb_uri: str = ""

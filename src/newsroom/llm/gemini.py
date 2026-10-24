@@ -59,6 +59,16 @@ class GeminiLLM:
                 "API key not valid",
                 "PERMISSION_DENIED",
                 "invalid_api_key",
+                # A prompt that does not fit the context window will not fit on a retry.
+                # Retrying it three times used to burn most of the cycle's time budget.
+                "context length",
+                "context window",
+                "too many tokens",
+                "token count",
+                "maximum number of tokens",
+                "exceeds the maximum",
+                "input is too long",
+                "request payload size",
             )
         ) or text.startswith("Error code: 404")
 
@@ -85,6 +95,7 @@ class GeminiLLM:
         prompt: str,
         schema: type[T],
         payload: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
     ) -> T:
         response_format = {
             "type": "text",
@@ -93,6 +104,13 @@ class GeminiLLM:
         }
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
+            if timeout_seconds is not None and timeout_seconds <= 0:
+                break
+            attempt_timeout = (
+                min(self._timeout, timeout_seconds)
+                if timeout_seconds is not None
+                else self._timeout
+            )
             try:
                 interaction = self._client.interactions.create(
                     model=self._model,
@@ -100,7 +118,7 @@ class GeminiLLM:
                     system_instruction=system,
                     response_format=response_format,
                     generation_config={"thinking_level": self._thinking_level},
-                    timeout=self._timeout,
+                    timeout=attempt_timeout,
                 )
                 return schema.model_validate_json(str(interaction.output_text or ""))
             except ValidationError as exc:
@@ -111,7 +129,7 @@ class GeminiLLM:
             except Exception as exc:  # network, quota, safety blocks
                 last_error = exc
                 if self._is_permanent(exc):
-                    # A missing model or a bad key will not fix itself on retry.
+                    # A missing model, a bad key or an oversized prompt will not fix itself.
                     raise LLMError(self._scrub(f"Gemini cannot run task '{task}': {exc}")) from exc
                 logger.warning(
                     "Gemini call for %s failed (attempt %s): %s",

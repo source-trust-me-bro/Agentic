@@ -134,9 +134,20 @@ def looks_like_paywall(page_html: str | None, extracted: str | None) -> bool:
     return False
 
 
+_ROBOTS_CACHE: dict[tuple[str, str], RobotFileParser | bool] = {}
+
+
+def clear_robots_cache() -> None:
+    """Test hook: the cache is process-wide, so tests must not inherit each other's hosts."""
+
+    _ROBOTS_CACHE.clear()
+
+
 def _robots_allows(url: str, settings: Settings, http: httpx.Client) -> bool:
     """Allowed only if robots.txt permits it, or does not exist (404/410).
 
+    The parsed rules are cached per host and user agent: one article used to trigger one
+    robots.txt request, so a feed with several stories paid for the same file repeatedly.
     An unreachable or erroring robots.txt means we do not crawl.
     """
 
@@ -144,17 +155,31 @@ def _robots_allows(url: str, settings: Settings, http: httpx.Client) -> bool:
     if not parts.scheme or not parts.netloc:
         return False
     robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
+    agent = settings.user_agent.split("/")[0].strip() or "*"
+    key = (robots_url, agent)
+    cached = _ROBOTS_CACHE.get(key)
+    if cached is True:
+        return True
+    if cached is False:
+        return False
+    if isinstance(cached, RobotFileParser):
+        return cached.can_fetch(agent, url)
     try:
         response = http.get(robots_url)
     except Exception:
+        _ROBOTS_CACHE[key] = False
         return False
     if response.status_code in (404, 410):
+        _ROBOTS_CACHE[key] = True
         return True
     if response.status_code != 200:
+        _ROBOTS_CACHE[key] = False
         return False
     parser = RobotFileParser()
     parser.parse(response.text.splitlines())
-    agent = settings.user_agent.split("/")[0].strip() or "*"
+    if len(_ROBOTS_CACHE) > 256:
+        _ROBOTS_CACHE.clear()
+    _ROBOTS_CACHE[key] = parser
     return parser.can_fetch(agent, url)
 
 

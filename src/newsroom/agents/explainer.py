@@ -18,7 +18,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from newsroom import guards
-from newsroom.agents.base import Agent, AgentContext
+from newsroom.agents.base import Agent, AgentContext, article_excerpt, prompt_articles
 from newsroom.domain import (
     Article,
     Claim,
@@ -318,6 +318,15 @@ class ExplainerAgent(Agent):
         attempt: int,
     ) -> StoryDraft:
         usable = [c for c in claims if c.status is not ClaimStatus.UNKNOWN or c.unknowns]
+        prompt_sources = prompt_articles(articles, self.settings.max_articles_per_prompt)
+        if len(prompt_sources) < len(articles):
+            self.trace(
+                "draft",
+                "trimmed",
+                f"{len(articles) - len(prompt_sources)} older source(s) left out of the prompt; "
+                f"context budget keeps {self.settings.max_articles_per_prompt}",
+                pitch_id=pitch.id,
+            )
         payload: dict[str, Any] = {
             "pitch": {"title": pitch.working_title, "needs": [n.value for n in pitch.needs]},
             "community": {
@@ -340,7 +349,7 @@ class ExplainerAgent(Agent):
             ],
             "articles": [
                 {"title": a.title, "url": a.url, "official": a.official, "source": a.source_name}
-                for a in articles
+                for a in prompt_sources
             ],
             "feedback": feedback,
             "attempt": attempt,
@@ -352,9 +361,9 @@ class ExplainerAgent(Agent):
         )
         source_blocks = "\n".join(
             guards.wrap_untrusted(
-                f"{a.title}\n{a.summary or ''}\n{(a.content or '')[:1500]}", a.source_name
+                article_excerpt(a, self.settings.explain_article_chars), a.source_name
             )
-            for a in articles
+            for a in prompt_sources
         )
         system = (
             "You are the explanatory reporter of a community newsroom. Write for the community "

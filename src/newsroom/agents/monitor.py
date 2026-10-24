@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 
 from pydantic import BaseModel
 
@@ -72,6 +73,12 @@ class MonitorAgent(Agent):
 
         # Official bodies first: city decisions and permit news must not be cut by the cap.
         for source in sorted(sources, key=lambda s: 0 if s.official else 1):
+            reason = self.ctx.limits.stop_reason()
+            if reason:
+                self.trace(
+                    "fetch", "stopped", f"{reason}; remaining sources wait for the next cycle"
+                )
+                break
             if max_new is not None and len(fresh) >= max_new:
                 self.trace("fetch", "limit", f"article limit of {max_new} reached")
                 break
@@ -95,12 +102,49 @@ class MonitorAgent(Agent):
 
     # ------------------------------------------------------------------ internals
 
+    def _prefetch_contents(self, articles: list[Article], source: SourceConfig | None) -> None:
+        """Fetch article bodies in parallel. Sequential fetching with a 20 s timeout per
+        page was enough to consume a whole cycle before the first model call."""
+
+        if not self.settings.fetch_article_content:
+            return
+        targets = [a for a in articles if a.access != "metadata_only" and not a.content and a.url]
+        if not targets:
+            return
+        if self.ctx.limits.stop_reason():
+            self.trace(
+                "fetch",
+                "stopped",
+                "cycle budget spent before article text could be fetched",
+                source_id=source.id if source else None,
+            )
+            return
+        workers = max(1, min(self.settings.max_fetch_workers, len(targets)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            texts = list(
+                pool.map(
+                    lambda article: extract_content(article.url, settings=self.settings),
+                    targets,
+                )
+            )
+        for article, text in zip(targets, texts, strict=True):
+            if text:
+                article.content = text
+
     def _ingest(
         self, articles: list[Article], source: SourceConfig | None, *, fetch_text: bool
     ) -> list[Article]:
         created: list[Article] = []
         metadata_only = bool(source and source.access == "metadata_only")
+        if fetch_text and not metadata_only:
+            self._prefetch_contents(articles, source)
         for raw in articles:
+            reason = self.ctx.limits.stop_reason()
+            if reason:
+                self.trace(
+                    "ingest", "stopped", f"{reason}; remaining articles wait for the next cycle"
+                )
+                break
             access = "metadata_only" if metadata_only or raw.access == "metadata_only" else "full"
             content = raw.content
             if access == "metadata_only":

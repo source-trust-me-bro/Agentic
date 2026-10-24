@@ -59,8 +59,17 @@ class OpenAICompatLLM:
     def _scrub(self, message: str) -> str:
         return message.replace(self._key, "***")
 
-    def _complete(self, messages: list[dict[str, str]], *, max_tokens: int = 4096) -> str:
-        with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
+    def _complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        max_tokens: int = 4096,
+        timeout_seconds: float | None = None,
+    ) -> str:
+        timeout = (
+            min(self._timeout, timeout_seconds) if timeout_seconds is not None else self._timeout
+        )
+        with httpx.Client(timeout=timeout, transport=self._transport) as client:
             response = client.post(
                 self._url,
                 headers={"Authorization": f"Bearer {self._key}"},
@@ -103,6 +112,7 @@ class OpenAICompatLLM:
         prompt: str,
         schema: type[T],
         payload: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
     ) -> T:
         contract = (
             "Reply with ONLY one JSON object, no prose and no code fences, that matches this "
@@ -114,8 +124,10 @@ class OpenAICompatLLM:
         ]
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
+            if timeout_seconds is not None and timeout_seconds <= 0:
+                break
             try:
-                reply = self._complete(messages)
+                reply = self._complete(messages, timeout_seconds=timeout_seconds)
                 return schema.model_validate_json(extract_json(reply))
             except LLMError:
                 raise  # permanent: a retry would fail the same way

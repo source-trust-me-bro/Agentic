@@ -17,7 +17,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from newsroom import guards
-from newsroom.agents.base import Agent
+from newsroom.agents.base import Agent, prompt_articles
 from newsroom.domain import Article, Community, Pitch, RiskTier, UserNeed, new_id
 from newsroom.lexicon import (
     INTEREST_CONCEPTS,
@@ -227,7 +227,10 @@ class NewsEditorAgent(Agent):
     def _build_candidates(self, community: Community, articles: list[Article]) -> list[Candidate]:
         candidates = []
         for index, group in enumerate(group_candidates(articles), start=1):
-            text = " ".join(f"{a.title} {a.summary or ''} {a.content or ''}" for a in group)
+            prompt_group = prompt_articles(group, self.settings.max_articles_per_prompt)
+            text = " ".join(
+                f"{a.title} {a.summary or ''} {(a.content or '')[:2000]}" for a in prompt_group
+            )
             cand = Candidate(
                 cid=f"cand{index}",
                 articles=group,
@@ -332,6 +335,10 @@ class NewsEditorAgent(Agent):
     def _ask_model(self, community: Community, chosen: list[Candidate]) -> dict[str, PitchProposal]:
         if not chosen:
             return {}
+        prompt_groups = {
+            c.cid: prompt_articles(c.articles, self.settings.max_articles_per_prompt)
+            for c in chosen
+        }
         payload: dict[str, Any] = {
             "community": {
                 "id": community.id,
@@ -353,7 +360,7 @@ class NewsEditorAgent(Agent):
                             "official": a.official,
                             "access": a.access,
                         }
-                        for a in c.articles
+                        for a in prompt_groups[c.cid]
                     ],
                 }
                 for c in chosen
@@ -362,7 +369,8 @@ class NewsEditorAgent(Agent):
         blocks = "\n\n".join(
             f"Candidate {c.cid}:\n"
             + guards.wrap_untrusted(
-                "\n".join(f"{a.title}\n{a.summary or ''}" for a in c.articles), c.cid
+                "\n".join(f"{a.title}\n{a.summary or ''}" for a in prompt_groups[c.cid]),
+                c.cid,
             )
             for c in chosen
         )

@@ -27,12 +27,13 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from newsroom import guards
-from newsroom.agents.base import Agent, AgentContext
+from newsroom.agents.base import Agent, AgentContext, prompt_articles
 from newsroom.domain import (
     Article,
     Event,
@@ -528,6 +529,21 @@ class KnowledgeArchitectAgent(Agent):
 
     def __init__(self, ctx: AgentContext) -> None:
         super().__init__(ctx)
+        # Signals are pure functions of one stored report. Recomputing them for every
+        # (new article × member article) pair is what made a cycle quadratic.
+        self._signals_cache: dict[tuple[str, str], Signals] = {}
+
+    def _signals(self, article: Article, extra_entities: Iterable[str] = ()) -> Signals:
+        if extra_entities:
+            return signals_for(article, extra_entities)
+        key = (article.id, article.content_hash or "")
+        cached = self._signals_cache.get(key)
+        if cached is None:
+            if len(self._signals_cache) > 5000:
+                self._signals_cache.clear()
+            cached = signals_for(article)
+            self._signals_cache[key] = cached
+        return cached
 
     # ------------------------------------------------------------------ public API
 
@@ -847,9 +863,14 @@ class KnowledgeArchitectAgent(Agent):
         self, article: Article, signals: Signals
     ) -> tuple[Event | None, Similarity | None]:
         when = _aware(article.published_at)
+        cutoff = when - timedelta(hours=WINDOW_HOURS)
         best: tuple[Event, Similarity] | None = None
         for event in self.store.find(Event):
             if event.status == "merged" or QUARANTINE_MARK in event.entities:
+                continue
+            # Do not load members of an event that cannot be inside the window. This keeps
+            # the work proportional to recent events, not to the whole archive.
+            if _aware(event.last_updated) < cutoff:
                 continue
             members = self._articles_of(event)
             if not any(
@@ -858,7 +879,7 @@ class KnowledgeArchitectAgent(Agent):
                 continue
             top: Similarity | None = None
             for member in members:
-                sim = compare(signals, signals_for(member))
+                sim = compare(signals, self._signals(member))
                 if top is None or sim.score > top.score:
                     top = sim
             if top and top.score >= ATTACH_THRESHOLD and len(top.kinds) >= MIN_AGREEING_KINDS:
@@ -867,7 +888,7 @@ class KnowledgeArchitectAgent(Agent):
         return (best[0], best[1]) if best else (None, None)
 
     def _event_signals(self, event: Event) -> list[Signals]:
-        return [signals_for(a) for a in self._articles_of(event)]
+        return [self._signals(a) for a in self._articles_of(event)]
 
     def _event_similarity(self, first: Event, second: Event) -> Similarity:
         best = Similarity(0.0, [], {})
@@ -935,8 +956,13 @@ class KnowledgeArchitectAgent(Agent):
             return []
         text = " ".join(
             [event.title, event.summary, " ".join(event.entities)]
-            + [article_text(a) for a in self._articles_of(event)]
-        )
+            + [
+                article_text(a)
+                for a in prompt_articles(
+                    self._articles_of(event), self.settings.max_articles_per_prompt
+                )
+            ]
+        )[: self.settings.topic_match_chars]
         matched = self._match_topics(text)
         proposals: list[TreeProposal] = []
         fresh = [t for t in matched if t.id not in event.topic_ids]
@@ -1187,11 +1213,16 @@ def _clean_keywords(words: Iterable[str]) -> list[str]:
     return out[:8]
 
 
-def _keyword_hit(lowered: str, keyword: str) -> bool:
+@lru_cache(maxsize=4096)
+def _keyword_pattern(keyword: str) -> re.Pattern[str]:
     kw = keyword.casefold()
     if len(kw) <= 3:  # EU, ice: whole words only, otherwise "euroa" would match "eu"
-        return re.search(r"(?<!\w)" + re.escape(kw) + r"(?!\w)", lowered) is not None
-    return re.search(r"(?<!\w)" + re.escape(kw), lowered) is not None
+        return re.compile(r"(?<!\w)" + re.escape(kw) + r"(?!\w)")
+    return re.compile(r"(?<!\w)" + re.escape(kw))
+
+
+def _keyword_hit(lowered: str, keyword: str) -> bool:
+    return _keyword_pattern(keyword).search(lowered) is not None
 
 
 def _independence(articles: list[Article]) -> tuple[list[dict[str, Any]], int]:

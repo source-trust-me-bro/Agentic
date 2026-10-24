@@ -10,11 +10,38 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from newsroom.config import Settings, get_settings
-from newsroom.domain import TraceEvent, new_id
+from newsroom.domain import Article, TraceEvent, new_id
 from newsroom.limits import CycleLimits
 from newsroom.llm.base import LLM
 from newsroom.policy import Policy, get_policy
 from newsroom.store.base import Store
+
+
+def prompt_articles(articles: list[Article], limit: int) -> list[Article]:
+    """The reports one prompt may carry: official and full-text first, then newest.
+
+    A story can accumulate reports across many cycles. Without this bound its prompts grow
+    with the archive until they no longer fit the model's context window.
+    """
+
+    if limit <= 0:
+        return []
+    ordered = sorted(
+        articles,
+        key=lambda a: (
+            not a.official,
+            a.access != "full",
+            -(a.published_at.timestamp() if a.published_at else 0.0),
+        ),
+    )
+    return ordered[:limit]
+
+
+def article_excerpt(article: Article, max_chars: int) -> str:
+    """Headline, summary and (for full-text sources only) a bounded body."""
+
+    body = "" if article.access == "metadata_only" else (article.content or "")[:max_chars]
+    return f"{article.title}\n{article.summary or ''}\n{body}"
 
 
 @dataclass

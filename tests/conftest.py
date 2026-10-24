@@ -11,6 +11,9 @@ os.environ["GEMINI_API_KEY"] = ""
 os.environ["MONGODB_URI"] = ""
 os.environ["API_KEY"] = ""
 os.environ["HF_TOKEN"] = ""
+os.environ["BACKEND_API_URL"] = ""
+os.environ["BACKEND_API_TOKEN"] = ""
+os.environ["MAX_PITCHES_PER_CYCLE"] = "2"
 os.environ["ARCHITECT_USES_MODEL"] = "true"  # tests exercise the model path explicitly
 
 
@@ -21,6 +24,17 @@ from newsroom.domain import Community, ReviewRole
 from newsroom.llm import FakeLLM, collect_fake_handlers
 from newsroom.service import Newsroom, StoryRun
 from newsroom.store.memory import MemoryStore
+
+
+@pytest.fixture(autouse=True)
+def _clear_process_caches():
+    """Process-wide caches must not leak between tests."""
+
+    from newsroom.sources.rss import clear_robots_cache
+
+    clear_robots_cache()
+    yield
+    clear_robots_cache()
 
 
 @pytest.fixture

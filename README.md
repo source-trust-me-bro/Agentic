@@ -28,7 +28,7 @@ Built for the Kaleva Media challenge. It follows the Council for Mass Media's
 cd D:\Agentic
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -m pytest                       # 220 tests including the connector
+.venv\Scripts\python.exe -m pytest                       # 230 tests including the connector
 $env:PYTHONPATH = "src"
 .venv\Scripts\python.exe -m newsroom demo                # end-to-end walkthrough on fixtures
 .venv\Scripts\python.exe -m newsroom serve               # API on http://127.0.0.1:8100/docs

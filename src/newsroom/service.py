@@ -80,6 +80,7 @@ class CycleReport:
     articles_deferred: int = 0  # saved, and picked up by the next cycle
     stopped_reason: str | None = None
     connector: dict[str, Any] | None = None  # topic-relationship work, when configured
+    model_usage: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def make_checkpointer(settings: Settings, *, persistent: bool = True) -> Any:
@@ -111,7 +112,11 @@ class Newsroom:
             max_seconds=self.settings.cycle_max_seconds,
         )
         self.ctx = AgentContext(
-            llm=BudgetedLLM(llm or build_llm(self.settings), self.limits),
+            llm=BudgetedLLM(
+                llm or build_llm(self.settings),
+                self.limits,
+                max_input_tokens=self.settings.llm_max_input_tokens,
+            ),
             store=self.store,
             settings=self.settings,
             limits=self.limits,
@@ -213,7 +218,35 @@ class Newsroom:
         connector_report = self._run_connector()
         if connector_report is not None:
             report.connector = connector_report.model_dump(mode="json")
+        report.stopped_reason = self.limits.triggered
+        report.model_usage = {task: dict(stats) for task, stats in self.limits.usage.items()}
+        if report.model_usage:
+            self._trace_model_usage(report)
         return report
+
+    def _trace_model_usage(self, report: CycleReport) -> None:
+        """Write prompt size and latency per task to the audit trail."""
+
+        total_calls = sum(int(s["calls"]) for s in report.model_usage.values())
+        total_tokens = sum(int(s["input_tokens"]) for s in report.model_usage.values())
+        total_seconds = sum(s["seconds"] for s in report.model_usage.values())
+        self.store.trace(
+            TraceEvent(
+                id=new_id("trace"),
+                run_id=report.run_id,
+                agent="model_layer",
+                step="usage",
+                decision="recorded",
+                reason=(
+                    f"{total_calls} model call(s), ~{total_tokens} input token(s), "
+                    f"{total_seconds:.1f}s in calls"
+                ),
+                refs={
+                    "usage": report.model_usage,
+                    "max_input_tokens": self.settings.llm_max_input_tokens,
+                },
+            )
+        )
 
     def _run_connector(self) -> ConnectorResult | None:
         """Link related topics through the backend API when the integration is on.

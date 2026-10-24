@@ -425,6 +425,16 @@ class TopicConnectorAgent(Agent):
         """Hand each accepted pair to the backend. The backend owns idempotency."""
 
         for pair in pairs:
+            reason = self.ctx.limits.stop_reason()
+            if reason:
+                self.trace(
+                    "submit",
+                    "deferred",
+                    f"{reason}; remaining relationships wait for the next run",
+                    first_id=pair.first_id,
+                    second_id=pair.second_id,
+                )
+                break
             try:
                 client.link_topics(pair.first_id, pair.second_id)
             except BackendError as exc:
