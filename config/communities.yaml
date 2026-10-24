@@ -21,7 +21,6 @@ communities:
       - {code: en, label: English, tier: A, human_review: spot_check}
       - {code: uk, label: Українська, tier: A, human_review: required}
       - {code: ar, label: العربية, tier: B, human_review: required}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {usefulness: 1.0, understanding: 0.9, information: 0.7, community: 0.6, emotion: 0.2, break: 0.1}
     lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
@@ -51,7 +50,6 @@ communities:
     languages:
       - {code: en, label: English, tier: A, human_review: spot_check}
       - {code: ru, label: Русский, tier: A, human_review: required}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {usefulness: 1.0, information: 0.8, understanding: 0.6, community: 0.7, break: 0.4, emotion: 0.2}
@@ -79,7 +77,6 @@ communities:
     interests: [language, education, reindeer herding, culture, services, local decisions]
     languages:
       - {code: se, label: Davvisámegiella, tier: C, human_review: human_only}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {community: 1.0, usefulness: 0.7, information: 0.7, understanding: 0.6, emotion: 0.5, break: 0.3}
@@ -103,7 +100,6 @@ communities:
     interests: [residence permits, registration, healthcare, housing, work, taxes, daily life, language courses]
     languages:
       - {code: en, label: English, tier: A, human_review: spot_check}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: uk, label: Українська, tier: A, human_review: required}
       - {code: ru, label: Русский, tier: A, human_review: required}
@@ -133,7 +129,6 @@ communities:
     languages:
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: en, label: English, tier: A, human_review: spot_check}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {usefulness: 1.0, community: 0.9, understanding: 0.8, information: 0.7, emotion: 0.3, break: 0.2}
     lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
@@ -156,7 +151,6 @@ communities:
     regions: [Oulu, Lapland, Finland]
     interests: [integration, local decisions, events, volunteering, language, daily life]
     languages:
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: en, label: English, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
@@ -180,7 +174,6 @@ communities:
     interests: [studies, student housing, part-time work, residence permits, healthcare, transport, social life]
     languages:
       - {code: en, label: English, tier: A, human_review: spot_check}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {usefulness: 1.0, information: 0.8, community: 0.7, understanding: 0.6, break: 0.4, emotion: 0.2}
@@ -205,7 +198,6 @@ communities:
     languages:
       - {code: uk, label: Українська, tier: A, human_review: required}
       - {code: en, label: English, tier: A, human_review: spot_check}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {usefulness: 1.0, information: 0.9, community: 0.7, understanding: 0.7, emotion: 0.3, break: 0.1}
@@ -229,7 +221,6 @@ communities:
     interests: [employment contracts, wages, working hours, dismissal, work safety, unions, residence permits for work]
     languages:
       - {code: en, label: English, tier: A, human_review: spot_check}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: ru, label: Русский, tier: A, human_review: required}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}
@@ -255,7 +246,6 @@ communities:
     interests: [daycare, school, child health clinic, family benefits, leisure activities, language support]
     languages:
       - {code: en, label: English, tier: A, human_review: spot_check}
-      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
       - {code: ar, label: العربية, tier: B, human_review: required}
       - {code: uk, label: Українська, tier: A, human_review: required}
       - {code: sv, label: Svenska, tier: A, human_review: spot_check}

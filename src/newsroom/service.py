@@ -283,6 +283,7 @@ class Newsroom:
                 progress.advance("select")
 
         pitches = [p for found in self._parallel(select, wanted) for p in found]
+        pitches = self._one_story_per_event(pitches)
         report.pitches = len(pitches)
         progress.finish_stage("select", detail=f"{len(pitches)} stories chosen")
         progress.begin("write", total=len(pitches), detail="Stories are written side by side")
@@ -300,6 +301,51 @@ class Newsroom:
                 report.topic_links = finish_linking()
         report.stopped_reason = self.limits.triggered
         return report
+
+    def _one_story_per_event(self, pitches: list[Pitch]) -> list[Pitch]:
+        """Several communities often pick the same news. Write it once, for the community that
+        needs it most, and publish it to the others too (``Pitch.also_for``)."""
+
+        articles = self.store.get_many(Article, (a for p in pitches for a in p.article_ids))
+
+        def event_of(p: Pitch) -> str | None:
+            return next(
+                (
+                    articles[a].event_id
+                    for a in p.article_ids
+                    if a in articles and articles[a].event_id
+                ),
+                None,
+            )
+
+        def priority(p: Pitch) -> int:
+            community = self.communities.get(p.community_id)
+            return community.priority if community else 100
+
+        ranked = sorted(pitches, key=lambda p: (-p.score, priority(p)))
+        owner: dict[str, Pitch] = {}
+        keep: list[Pitch] = []
+        for pitch in ranked:
+            event = event_of(pitch)
+            first = owner.get(event) if event else None
+            if first is None:
+                if event:
+                    owner[event] = pitch
+                keep.append(pitch)
+                continue
+            if pitch.community_id not in (first.community_id, *first.also_for):
+                first.also_for.append(pitch.community_id)
+            self.store.put(first)
+            self.store.delete(Pitch, pitch.id)
+        return keep
+
+    def _targets(self, story: Story, pitch: Pitch | None = None) -> list[Community]:
+        """The communities a story is published to: its own, then those in ``also_for``."""
+
+        pitch = pitch or self.store.get(Pitch, story.pitch_id)
+        also_for = pitch.also_for if pitch else []
+        others = [self.communities[c] for c in also_for if c in self.communities]
+        return [self.communities[story.community_id], *others]
 
     def _parallel(self, fn: Callable[[Any], Any], items: Iterable[Any]) -> list[Any]:
         """Run ``fn`` over ``items`` a few at a time, results in the original order. Model calls
@@ -353,10 +399,10 @@ class Newsroom:
         items.extend(self._language_review_items())
         return items
 
-    def _pending_languages(self, story: Story) -> dict[str, str]:
-        """Languages of a published story that still need a language reviewer."""
+    def _pending_languages(self, story: Story, pitch: Pitch | None = None) -> dict[str, str]:
+        """Languages of a published story that still need a language reviewer, in any of
+        the communities it was published to."""
 
-        community = self.communities[story.community_id]
         translations = [
             t
             for t in self.store.find(Translation, story_id=story.id)
@@ -364,6 +410,7 @@ class Newsroom:
         ]
         publishable = {
             code
+            for community in self._targets(story, pitch)
             for code, _ in self.distributor._publishable_languages(
                 story, translations, community, story.risk_tier
             )
@@ -376,8 +423,10 @@ class Newsroom:
 
     def _language_review_items(self) -> list[dict[str, Any]]:
         items = []
-        for story in self.store.find(Story, status=StoryStatus.PUBLISHED.value):
-            pending = self._pending_languages(story)
+        stories = self.store.find(Story, status=StoryStatus.PUBLISHED.value)
+        pitches = self.store.get_many(Pitch, (s.pitch_id for s in stories))
+        for story in stories:
+            pending = self._pending_languages(story, pitches.get(story.pitch_id))
             if not pending:
                 continue
             items.append(
@@ -425,13 +474,18 @@ class Newsroom:
             if d.decision is Decision.APPROVE
         ]
         previous = [p for p in self.store.find(Publication, story_id=story.id)]
-        publication = self.distributor.render(story, translations, community, approvals)
-        # Credit the language reviewers too: readers should see who approved each language.
+        # Published again in every community that has the story (its own first).
         credited = [d.id for d in approvals if d.role is ReviewRole.LANGUAGE_REVIEWER]
-        publication.approval_ids = list(dict.fromkeys([*publication.approval_ids, *credited]))
-        self.store.put(publication)
+        fresh: list[Publication] = []
+        for target in self._targets(story, pitch):
+            renewed = self.distributor.render(story, translations, target, approvals)
+            # Credit the language reviewers too: readers should see who approved each language.
+            renewed.approval_ids = list(dict.fromkeys([*renewed.approval_ids, *credited]))
+            self.store.put(renewed)
+            fresh.append(renewed)
+        publication = fresh[0]
         for old in previous:
-            if old.id != publication.id:
+            if old.id not in {p.id for p in fresh}:
                 self.store.delete(Publication, old.id)
         return StoryRun(
             pitch_id=pitch.id,
@@ -572,7 +626,10 @@ class Newsroom:
         reviewers, corrections), not one query per story, so it stays fast on a remote database."""
 
         community = self.communities[community_id]
-        voices = {v.id: v for v in community.trusted_voices}
+        # A story shared with this community (one story per event) may carry approvals from
+        # the trusted voices of the community it was written for; this community's come first.
+        voices = {v.id: v for c in self.communities.values() for v in c.trusted_voices}
+        voices.update({v.id: v for v in community.trusted_voices})
         publications = self.feed(community_id, destination)
 
         stories = self.store.get_many(Story, (p.story_id for p in publications))
@@ -678,15 +735,23 @@ class Newsroom:
             story_of = live[t.story_id]
             if t.story_version == story_of.version and t.body_md.strip():
                 translations_of.setdefault(t.story_id, {})[t.language] = t
+        # A story published to several communities (one story per event) is exported once,
+        # in every language any of its publications carries.
+        published_in: dict[str, list[Publication]] = {}
         for publication in publications:
-            story = live.get(publication.story_id)
-            if story is None:
-                continue
+            if publication.story_id in live:
+                published_in.setdefault(publication.story_id, []).append(publication)
+        for story_id, story_publications in published_in.items():
+            story = live[story_id]
+            publication = story_publications[0]
             topic_ids = links[story.id][1]
             translations = translations_of.get(story.id, {})
             versions = []
             for language in dict.fromkeys(
-                r.language for r in publication.renditions if r.channel == "web"
+                r.language
+                for p in story_publications
+                for r in p.renditions
+                if r.channel == "web"
             ):
                 if language == story.language:
                     text = (story.headline, story.standfirst, story.body_md)
@@ -711,8 +776,13 @@ class Newsroom:
                 {
                     "story_id": story.id,
                     "community_id": story.community_id,
+                    "community_ids": list(
+                        dict.fromkeys(p.community_id for p in story_publications)
+                    ),
                     "published_at": publication.published_at,
                     "topic_ids": topic_ids,
+                    "image_url": story.image_url,
+                    "event_ids": story.event_ids,
                     "sources": [s.model_dump() for s in story.sources],
                     "engagement": stats.get(story.id) or self.engagement._stat(None),
                     "versions": versions,

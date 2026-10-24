@@ -38,7 +38,7 @@ from newsroom.llm.base import LLMError
 from newsroom.outlets import outlet_of
 from newsroom.parallel import run_parallel
 
-MAX_CLAIMS_PER_PITCH = 8
+MAX_CLAIMS_PER_PITCH = 4
 PAYWALL_PREFIX = "Paywalled:"
 
 # --------------------------------------------------------------------------- schemas

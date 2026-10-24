@@ -216,7 +216,7 @@ def test_official_sources_are_read_first_and_the_cap_stops_the_rest(monkeypatch)
         ]
 
     monkeypatch.setattr("newsroom.agents.monitor.fetch_feed", fake_fetch)
-    monkeypatch.setattr("newsroom.agents.monitor.extract_content", lambda *a, **k: None)
+    monkeypatch.setattr("newsroom.agents.monitor.extract_page", lambda *a, **k: (None, None))
     # One feed per wave: this test is about the strict order and the early stop.
     ctx = AgentContext(
         llm=FakeLLM(), store=MemoryStore(), settings=Settings(mongodb_uri="", fetch_workers=1)

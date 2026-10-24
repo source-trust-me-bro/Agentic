@@ -47,7 +47,7 @@ def test_metadata_only_source_never_fetches_the_page(monkeypatch):
         raise AssertionError("a paywalled page must never be fetched")
 
     monkeypatch.setattr(monitor_module, "fetch_feed", fake_fetch)
-    monkeypatch.setattr(monitor_module, "extract_content", forbidden)
+    monkeypatch.setattr(monitor_module, "extract_page", forbidden)
     fresh = MonitorAgent(ctx).scan([source])
     assert len(fresh) == 1
     assert fresh[0].access == "metadata_only"
@@ -61,7 +61,9 @@ def test_full_access_source_fetches_text(monkeypatch):
     source = SourceConfig(id="yle", name="Yle News", feed_url="https://yle.test/rss", language="en")
     item = art("y1", "Yle News", "Council decides on winter buses", language="en")
     monkeypatch.setattr(monitor_module, "fetch_feed", lambda src, **kw: [item])
-    monkeypatch.setattr(monitor_module, "extract_content", lambda url, **kw: "Body text here.")
+    monkeypatch.setattr(
+        monitor_module, "extract_page", lambda url, **kw: ("Body text here.", None)
+    )
     fresh = MonitorAgent(ctx).scan([source])
     assert fresh[0].content == "Body text here."
     assert fresh[0].access == "full"
@@ -86,7 +88,7 @@ def test_one_broken_source_does_not_stop_the_cycle(monkeypatch):
         return [art("g1", "Good", "A good story from a good source")]
 
     monkeypatch.setattr(monitor_module, "fetch_feed", fake_fetch)
-    monkeypatch.setattr(monitor_module, "extract_content", lambda *a, **k: None)
+    monkeypatch.setattr(monitor_module, "extract_page", lambda *a, **k: (None, None))
     fresh = MonitorAgent(ctx).scan([bad, disabled, good])
     assert [a.id for a in fresh] == ["g1"]
     assert decisions(ctx, "source_failed")

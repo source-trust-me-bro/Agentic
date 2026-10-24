@@ -12,6 +12,9 @@
 #                  organisers). Facts then come from free full-text sources (Yle, BBC,
 #                  official bodies); this outlet still counts as having reported the event.
 #
+# about
+#   one sentence for readers: who this source is. Shown under the story's source list.
+#
 # reuse
 #   link_and_summarize     summarise and link back; never republish full text
 #   licensed               content the newsroom may translate and republish
@@ -21,6 +24,7 @@ sources:
   # ---- Kaleva (paywalled): public feeds listed at https://www.kaleva.fi/rss ----------
   - id: kaleva-oulun-seutu
     name: Kaleva
+    about: "Kaleva is the regional daily newspaper of Northern Finland, published in Oulu."
     feed_url: https://kaleva.fi/feedit/rss/managed-listing/oulun-seutu/
     language: fi
     region: Oulu
@@ -29,6 +33,7 @@ sources:
     notes: Oulun seutu. Paywalled; headline, summary and link only.
   - id: kaleva-pohjois-suomi
     name: Kaleva
+    about: "Kaleva is the regional daily newspaper of Northern Finland, published in Oulu."
     feed_url: https://kaleva.fi/feedit/rss/managed-listing/pohjois-suomi/
     language: fi
     region: Lapland
@@ -37,6 +42,7 @@ sources:
     notes: Pohjois-Suomi. Paywalled; headline, summary and link only.
   - id: kaleva-latest
     name: Kaleva
+    about: "Kaleva is the regional daily newspaper of Northern Finland, published in Oulu."
     feed_url: https://kaleva.fi/feedit/rss/managed-listing/rss-uusimmat/
     language: fi
     access: metadata_only
@@ -46,6 +52,7 @@ sources:
   # ---- Official bodies: where decisions start. Feeds verified to return RSS. -----------
   - id: oulu-city
     name: City of Oulu
+    about: "The City of Oulu runs local services such as schools, health centres and housing advice."
     feed_url: "https://www.ouka.fi/news/feed?region=All&topic=All&audience=All"
     language: fi
     official: true
@@ -54,6 +61,7 @@ sources:
     notes: City news. Listed on https://www.ouka.fi/rss.
   - id: oulu-notices
     name: City of Oulu
+    about: "Official notices from the City of Oulu, where council and board decisions are announced."
     feed_url: "https://asiakirjat.ouka.fi/ktwebscr/kuul_rssfeed.htm"
     language: fi
     official: true
@@ -62,6 +70,7 @@ sources:
     notes: Official notices and announcements (kuulutukset), where council and board decisions are announced.
   - id: oulu-transport
     name: Oulu Region Public Transport (OSL)
+    about: "Oulu Region Public Transport (OSL) runs the buses in the Oulu region and sets timetables and fares."
     feed_url: "https://www.osl.fi/feed/"
     language: fi
     official: true
@@ -70,6 +79,7 @@ sources:
     notes: Timetable and fare changes. Useful for newcomers.
   - id: oulu-mun-oulu
     name: Mun Oulu (City of Oulu magazine)
+    about: "Mun Oulu is the City of Oulu's own magazine: it speaks for the city and is not independent reporting."
     feed_url: "https://www.munoulu.fi/feed/"
     language: fi
     official: true
@@ -78,6 +88,7 @@ sources:
     notes: The city's own magazine. Treat as the city's voice, not independent reporting.
   - id: oulu-business
     name: BusinessOulu
+    about: "BusinessOulu is the City of Oulu's business and employment agency."
     feed_url: "https://www.businessoulu.com/ajankohtaista/feed/"
     language: fi
     official: true
@@ -86,6 +97,7 @@ sources:
     notes: The city's business development agency; relevant to international professionals.
   - id: migri-press
     name: Finnish Immigration Service (Migri)
+    about: "The Finnish Immigration Service (Migri) decides residence permits, citizenship and asylum."
     feed_url: "https://migri.fi/en/press-releases?p_p_id=com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_h86npU2Dqv2l&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=getRSS&p_p_cacheability=cacheLevelPage"
     language: en
     official: true
@@ -93,6 +105,7 @@ sources:
     notes: Press releases. Primary source for permit and migration stories.
   - id: migri-bulletins
     name: Finnish Immigration Service (Migri)
+    about: "The Finnish Immigration Service (Migri) decides residence permits, citizenship and asylum."
     feed_url: "https://migri.fi/en/customer-bulletins?p_p_id=com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_DaWOHz9tPh9q&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=getRSS&p_p_cacheability=cacheLevelPage"
     language: en
     official: true
@@ -100,6 +113,7 @@ sources:
     notes: Customer bulletins, such as changes that affect applicants.
   - id: migri-exceptions
     name: Finnish Immigration Service (Migri)
+    about: "The Finnish Immigration Service (Migri) decides residence permits, citizenship and asylum."
     feed_url: "https://migri.fi/en/press-releases-and-bulletins?p_p_id=com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_5a29OSeGdYT8&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=getRSS&p_p_cacheability=cacheLevelPage"
     language: en
     official: true

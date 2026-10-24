@@ -15,6 +15,14 @@ os.environ["ARCHITECT_USES_MODEL"] = "true"  # tests exercise the model path exp
 # The shipped defaults are relaxed (hackathon); the editorial rules are tested in strict mode.
 os.environ["STRICT_STANDARDS"] = "true"
 os.environ["POLICY_FILE"] = os.path.join(os.path.dirname(__file__), "fixtures", "policy_strict.yaml")
+# A local .env tuned for speed (fewer rounds, pitches and calls) must not change what is tested.
+os.environ["MAX_INVESTIGATION_ROUNDS"] = "3"
+os.environ["MAX_REVISION_ROUNDS"] = "2"
+os.environ["MAX_PITCHES_PER_CYCLE"] = "2"
+os.environ["MAX_CONCURRENT_MODEL_CALLS"] = "8"
+os.environ["CYCLE_MAX_MODEL_CALLS"] = "600"
+# Test newsrooms have no members yet; every community language is translated.
+os.environ["TRANSLATE_ONLY_READ_LANGUAGES"] = "false"
 
 
 import pytest
@@ -24,6 +32,17 @@ from newsroom.domain import Community, ReviewRole
 from newsroom.llm import FakeLLM, collect_fake_handlers
 from newsroom.service import Newsroom, StoryRun
 from newsroom.store.memory import MemoryStore
+
+
+@pytest.fixture(autouse=True)
+def _fresh_robots_cache():
+    """robots.txt is cached per host; every test starts without what another test fetched."""
+
+    from newsroom.sources import rss
+
+    rss._ROBOTS.clear()
+    yield
+    rss._ROBOTS.clear()
 
 
 @pytest.fixture

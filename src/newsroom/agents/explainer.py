@@ -35,6 +35,7 @@ from newsroom.domain import (
 )
 from newsroom.langdetect import LANGUAGE_NAMES, detect_language
 from newsroom.llm.base import LLMError
+from newsroom.registry import load_sources
 
 _RISK_ORDER = {RiskTier.LOW: 0, RiskTier.ELEVATED: 1, RiskTier.HIGH: 2}
 
@@ -362,6 +363,8 @@ class ExplainerAgent(Agent):
             sources=self._sources(articles, claims),
             context_notes=notes,
             ai_disclosure=guards.ai_disclosure(written_in, self.policy),
+            image_url=_pick_image(articles),
+            event_ids=list(dict.fromkeys(a.event_id for a in articles if a.event_id)),
             updated_at=utcnow(),
         )
         self.store.put(story)
@@ -433,6 +436,10 @@ class ExplainerAgent(Agent):
             f"Byte-sized: the standfirst is the gist in one sentence, and standfirst plus body "
             f"together must be UNDER {self.settings.max_story_words} words. Lead with what "
             "happened and what it means for the reader; use short paragraphs and no filler.\n"
+            "Structure body_md as exactly two sections. First '## What happened': 2 to 3 short "
+            "sentences of plain facts from the sources (who, what, when, where), no "
+            "interpretation. Then '## What it means for you': the explanation for this "
+            "community: why it matters, what to do next, and context they may lack.\n"
             "Always write in English, whatever the language of the sources or the community: "
             "the translators make every other language from your English text.\n"
             + guards.UNTRUSTED_PREAMBLE
@@ -543,9 +550,19 @@ class ExplainerAgent(Agent):
         return needs or [UserNeed.INFORMATION]
 
     def _sources(self, articles: list[Article], claims: list[Claim]) -> list[SourceRef]:
+        """Every report the story rests on, each explained for the reader: who the source is,
+        what it published, and what we could use of it. Official sources come first."""
+
+        about = {s.id: s.about for s in load_sources() if s.about}
         by_id = {a.id: a for a in articles}
         refs: dict[str, SourceRef] = {
-            a.url: SourceRef(name=a.source_name, url=a.url, official=a.official) for a in articles
+            a.url: SourceRef(
+                name=a.source_name,
+                url=a.url,
+                official=a.official,
+                note=explain_source(a, about.get(a.source_id)),
+            )
+            for a in articles
         }
         for claim in claims:
             for link in claim.evidence:
@@ -556,8 +573,13 @@ class ExplainerAgent(Agent):
                     name=link.source_name,
                     url=link.url,
                     official=bool(known and known.official),
+                    note=(
+                        explain_source(known, about.get(known.source_id))
+                        if known
+                        else "Used to check a fact in this story."
+                    ),
                 )
-        return list(refs.values())
+        return sorted(refs.values(), key=lambda r: not r.official)
 
     def _failed_story(
         self,
@@ -596,7 +618,34 @@ class ExplainerAgent(Agent):
         return story
 
 
+def _pick_image(articles: list[Article]) -> str | None:
+    """A linked photo for the story: official sources first, then full-access reports."""
+
+    ranked = sorted(articles, key=lambda a: (not a.official, a.access != "full"))
+    return next((a.image_url for a in ranked if a.image_url), None)
+
+
 # ------------------------------------------------------------------- offline stand-in
+
+
+def explain_source(article: Article, about: str | None = None) -> str:
+    """One or two plain sentences telling the reader what this source is and what it said."""
+
+    who = about or (
+        f"{article.source_name} is an official body." if article.official
+        else f"{article.source_name} is a news outlet."
+    )  # fmt: skip
+    title = article.title.strip().rstrip(".")
+    if article.official:
+        said = f"This is its own announcement: “{title}”."
+    elif article.access == "metadata_only":
+        said = (
+            f"It reported “{title}”. The full story is paywalled, so the newsroom "
+            "used only the public headline and summary."
+        )
+    else:
+        said = f"It reported “{title}”."
+    return f"{who} {said}"
 
 
 def _fake_write_story(payload: dict[str, Any]) -> StoryDraft:
@@ -626,11 +675,15 @@ def _fake_write_story(payload: dict[str, Any]) -> StoryDraft:
             )
         # unknown claims are never stated; the code adds an honest "not yet confirmed" line
 
-    body = [f"For {community['name']}, this matters in practice: {title}.", ""]
+    # Same two sections as a model-written story: the facts, then what they mean.
+    body = ["## What happened"]
     body += lines or ["The facts behind this story are still being checked."]
     body += [
         "",
-        "## What to do next",
+        "## What it means for you",
+        f"For {community['name']}, this matters in practice: {title}.",
+        "",
+        "What to do next:",
         "- Read the original reports linked below before you act.",
         "- If this affects you directly, check the official source before you act.",
     ]

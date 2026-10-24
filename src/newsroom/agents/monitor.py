@@ -17,7 +17,7 @@ from newsroom.agents.base import Agent
 from newsroom.domain import Article, SourceConfig
 from newsroom.lexicon import words
 from newsroom.parallel import run_parallel
-from newsroom.sources.rss import extract_content, fetch_feed
+from newsroom.sources.rss import extract_page, fetch_feed
 
 FAKE_HANDLERS: dict[str, Callable[[dict], BaseModel]] = {}  # the monitor makes no model calls
 
@@ -157,8 +157,8 @@ class MonitorAgent(Agent):
         by_id: dict[str, SourceConfig],
         *,
         cap: int,
-    ) -> dict[str, str | None]:
-        """Full text for the new articles of every feed, downloaded side by side.
+    ) -> dict[str, tuple[str | None, str | None]]:
+        """Full text and page photo for the new articles of every feed, downloaded side by side.
 
         Only articles that are not stored yet are fetched (one batch query tells which), and never
         those of paywalled outlets."""
@@ -179,11 +179,11 @@ class MonitorAgent(Agent):
         known = {a.url for a in self.store.find_in(Article, "url", wanted)}
         todo = [url for url in wanted if url not in known][:cap]
 
-        def page(url: str) -> str | None:
+        def page(url: str) -> tuple[str | None, str | None]:
             try:
-                return extract_content(url, settings=self.settings)
+                return extract_page(url, settings=self.settings)
             except Exception:  # noqa: BLE001 - a page that will not load is simply skipped
-                return None
+                return None, None
 
         texts = run_parallel(page, todo, self.settings.fetch_workers, "pages")
         return dict(zip(todo, texts, strict=True))
@@ -194,13 +194,14 @@ class MonitorAgent(Agent):
         source: SourceConfig | None,
         *,
         fetch_text: bool,
-        pages: dict[str, str | None] | None = None,
+        pages: dict[str, tuple[str | None, str | None]] | None = None,
     ) -> list[Article]:
         created: list[Article] = []
         metadata_only = bool(source and source.access == "metadata_only")
         for raw in articles:
             access = "metadata_only" if metadata_only or raw.access == "metadata_only" else "full"
             content = raw.content
+            page_image: str | None = None
             if access == "metadata_only":
                 # Paywalled outlet: headline, summary and link only. Never fetch the page
                 # and never keep body text, even if a feed or fixture happens to carry it.
@@ -213,10 +214,12 @@ class MonitorAgent(Agent):
                     url=raw.url,
                 )
             elif fetch_text and self.settings.fetch_article_content and not content:
+                # The page's photo is used only when the feed has none. Paywalled pages are
+                # never fetched (above), so their photo can only come from the feed.
                 if pages is not None and raw.url in pages:
-                    content = pages[raw.url]  # already downloaded alongside the others
+                    content, page_image = pages[raw.url]  # downloaded alongside the others
                 else:
-                    content = extract_content(raw.url, settings=self.settings)
+                    content, page_image = extract_page(raw.url, settings=self.settings)
 
             article = raw.model_copy(
                 update={
@@ -224,6 +227,7 @@ class MonitorAgent(Agent):
                     "summary": guards.sanitize(raw.summary, max_chars=2000) or None,
                     "content": guards.sanitize(content) or None,
                     "access": access,
+                    "image_url": raw.image_url or page_image,
                 }
             )
             article.injection_flags = guards.scan_injection(

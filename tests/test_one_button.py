@@ -26,8 +26,8 @@ def test_an_ordinary_story_publishes_with_one_editor_click(newsroom):
 
     assert result.status == "published"
     publication = newsroom.store.get(Publication, result.publication_id)
-    # English, Finnish and Swedish go out with the click; uk and ar wait for their language reviewers.
-    assert {r.language for r in publication.renditions} == {"en", "fi", "sv"}
+    # English and Swedish go out with the click; uk and ar wait for their language reviewers.
+    assert {r.language for r in publication.renditions} == {"en", "sv"}
     assert newsroom.store.get(Story, result.story_id).status is StoryStatus.PUBLISHED
 
 

@@ -42,6 +42,7 @@ from newsroom.domain import (
     Community,
     Decision,
     InvestigationResult,
+    Member,
     Pitch,
     ReviewDecision,
     Story,
@@ -205,10 +206,32 @@ class StoryWorkflow:
         self.librarian.attach(story, self._community(state))
         return {}
 
+    def _targets(self, state: StoryState) -> list[Community]:
+        """The community the story is written for, then every other community that picked
+        the same event (``Pitch.also_for``). One story is published to all of them."""
+
+        pitch = self.store.get(Pitch, state["pitch_id"])
+        also_for = pitch.also_for if pitch else []
+        others = [self.communities[c] for c in also_for if c in self.communities]
+        return [self._community(state), *others]
+
     def translate(self, state: StoryState) -> StoryState:
         community = self._community(state)
         story = self._story(state)
-        lanes = [lane for lane in community.languages if lane.code != story.language]
+        # Every language any target community reads, each once.
+        codes: dict[str, Any] = {}
+        for target in self._targets(state):
+            for lane in target.languages:
+                codes.setdefault(lane.code, lane)
+        lanes = [lane for code, lane in codes.items() if code != story.language]
+        if self.ctx.settings.translate_only_read_languages:
+            readers = {
+                code
+                for m in self.store.find(Member)
+                for code in (m.language, *m.reading_languages)
+            }
+            readers |= set(self.ctx.settings.always_translate)
+            lanes = [lane for lane in lanes if lane.code in readers]
         progress = self.ctx.progress
         pitch_id = state.get("pitch_id", "")
         progress.story_languages(pitch_id, total=len(lanes))
@@ -392,6 +415,9 @@ class StoryWorkflow:
             if d.decision is Decision.APPROVE
         ]
         publication = self.distributor.render(story, translations, community, approvals)
+        # The same story goes to every other community that picked this event.
+        for other in self._targets(state)[1:]:
+            self.distributor.render(story, translations, other, approvals)
         self._trace(
             state,
             "publish",

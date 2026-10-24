@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # False = standards findings advise the editor but never block a publish (hackathon mode).
     strict_standards: bool = False
     max_pitches_per_cycle: int = 2  # per community
+    # Translate only into languages some member reads (plus always_translate). A language a
+    # reader picks later is covered by the next cycle.
+    translate_only_read_languages: bool = True
+    always_translate: list[str] = Field(default_factory=lambda: ["fi"])  # Finnish: bridge digest
     # Model calls are slow and independent, so they run side by side. 1 = one at a time.
     # Stories (and community selections) handled at once: a quarter of the cores, 2 to 6.
     story_workers: int = Field(default_factory=lambda: min(6, max(2, (os.cpu_count() or 4) // 4)))

@@ -1,4 +1,4 @@
-"""Routes for following, likes, comments, shares, top news and editor posts.
+"""Routes for following, views, likes, comments, shares, top news and editor posts.
 
 Registered by ``create_app``. They use the same guards as the rest of the API: a staff key
 for server-to-server calls and a pseudonymous ``X-User-Ref`` for the member.
@@ -51,6 +51,16 @@ class PostSourceIn(BaseModel):
     name: str = Field(min_length=1)
     url: str = Field(min_length=1)
     official: bool = False
+    note: str = Field(default="", max_length=500)  # who the source is, for readers
+
+
+class ViewIn(BaseModel):
+    language: str | None = Field(default=None, max_length=12)
+    community_id: str | None = None
+
+
+class SourceClickIn(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
 
 
 class EditorPostIn(BaseModel):
@@ -152,6 +162,32 @@ def register(
     ) -> dict[str, int]:
         return _call(nr.engagement.like, ref, story_id, body.community_id if body else None)
 
+    @app.put("/stories/{story_id}/view", dependencies=staff)
+    def view(
+        story_id: str,
+        body: ViewIn | None = None,
+        ref: str = Depends(user_ref),
+        nr: Newsroom = Depends(get_newsroom),
+    ) -> dict[str, int]:
+        """The member opened the story (counted once a day)."""
+
+        body = body or ViewIn()
+        return _call(
+            nr.engagement.view, ref, story_id, language=body.language,
+            community_id=body.community_id,
+        )  # fmt: skip
+
+    @app.post("/stories/{story_id}/source-click", dependencies=staff)
+    def source_click(
+        story_id: str,
+        body: SourceClickIn,
+        ref: str = Depends(user_ref),
+        nr: Newsroom = Depends(get_newsroom),
+    ) -> dict[str, int]:
+        """The member followed one of the story's source links."""
+
+        return _call(nr.engagement.source_click, ref, story_id, body.url)
+
     @app.delete("/stories/{story_id}/like", dependencies=staff)
     def unlike(
         story_id: str, ref: str = Depends(user_ref), nr: Newsroom = Depends(get_newsroom)
@@ -220,7 +256,8 @@ def register(
         limit: int = Query(default=10, ge=1, le=100),
         nr: Newsroom = Depends(get_newsroom),
     ) -> dict[str, Any]:
-        """Top news, busiest communities and topic-tree engagement, for the editors' dashboard."""
+        """Most-read and top news, busiest communities, reading languages and the information
+        tree with its reads, for the editors' dashboard."""
 
         return jsonable_encoder(nr.engagement.dashboard(days, limit))
 

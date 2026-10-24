@@ -106,6 +106,7 @@ class SourceConfig(BaseModel):
     access: Literal["full", "metadata_only"] = "full"
     enabled: bool = True
     notes: str | None = None
+    about: str | None = None  # one sentence for readers: who this source is
 
 
 class Article(Doc):
@@ -129,6 +130,8 @@ class Article(Doc):
     access: Literal["full", "metadata_only"] = "full"
     # The canonical event this report belongs to (set by the knowledge architect).
     event_id: str | None = None
+    # The publisher's own photo, linked (never copied). Shown as "Photo: <outlet>".
+    image_url: str | None = None
 
 
 # ------------------------------------------------------------------------- communities
@@ -204,6 +207,8 @@ class Pitch(Doc):
     origin: Literal["monitor", "community_tip", "editor"] = "monitor"
     # Where the editor chose to publish it. Empty means both places.
     publish_to: list[Literal["dashboard", "community"]] = Field(default_factory=list)
+    # Other communities that picked the same event. One story is written and published to all.
+    also_for: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -281,6 +286,9 @@ class Story(Doc):
     sources: list[SourceRef] = Field(default_factory=list)
     context_notes: list[ContextNote] = Field(default_factory=list)
     ai_disclosure: str = ""
+    # A linked photo from one of the sources, and the events the story reports.
+    image_url: str | None = None
+    event_ids: list[str] = Field(default_factory=list)
     status: StoryStatus = StoryStatus.DRAFT
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
@@ -569,6 +577,27 @@ class Share(Doc):
     community_id: str | None = None
     platform: ShareTarget
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class View(Doc):
+    """A member opened a story ("open"), or followed one of its source links ("source").
+
+    Counted once per member, story and day for opens, and once per member, story and link
+    for source clicks, so refreshing a page does not inflate what the editors see."""
+
+    COLLECTION: ClassVar[str] = "views"
+
+    story_id: str
+    member_id: str
+    kind: Literal["open", "source"] = "open"
+    community_id: str | None = None
+    language: str | None = None  # the edition the member read
+    url: str | None = None  # the source link, for kind="source"
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @staticmethod
+    def key(member_id: str, story_id: str, kind: str, part: str) -> str:
+        return f"{kind}:{member_id}:{story_id}:{part}"
 
 
 # ------------------------------------------------------------------------ audit trail

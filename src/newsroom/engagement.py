@@ -2,7 +2,7 @@
 
 Members follow communities and official accounts; the personal feed, the "recommended to
 follow" list, the top-news ranking and the dashboard all read the same stored records
-(``Follow``, ``Reaction``, ``Comment``, ``Share``), so nothing is counted anywhere but the
+(``Follow``, ``Reaction``, ``Comment``, ``Share``, ``View``), so nothing is counted anywhere but the
 database. Members are pseudonymous references, as everywhere else in the newsroom.
 """
 
@@ -42,6 +42,7 @@ from newsroom.domain import (
     TraceEvent,
     Translation,
     UserNeed,
+    View,
     new_id,
     utcnow,
 )
@@ -53,6 +54,10 @@ if TYPE_CHECKING:
 # A share says more than a comment, a comment more than a like.
 WEIGHTS = {"likes": 1, "comments": 3, "shares": 5}
 SHARE_TARGETS: tuple[str, ...] = get_args(ShareTarget)
+# Reads are counted beside the score, not in it: the editors see what people open and what
+# they act on separately.
+READS = ("views", "source_clicks")
+COUNTED = (*READS, *WEIGHTS)
 LIVE = (StoryStatus.PUBLISHED, StoryStatus.CORRECTED)
 
 
@@ -87,7 +92,7 @@ class EngagementService:
         }
 
     def _counts(self, since: datetime | None = None) -> dict[str, Counter[str]]:
-        """story_id -> likes / comments / shares, from the stored records."""
+        """story_id -> views / source clicks / likes / comments / shares, from the records."""
 
         counts: dict[str, Counter[str]] = defaultdict(Counter)
 
@@ -103,12 +108,15 @@ class EngagementService:
         for share in self.store.find(Share):
             if fresh(share):
                 counts[share.story_id]["shares"] += 1
+        for view in self.store.find(View):
+            if fresh(view):
+                counts[view.story_id]["views" if view.kind == "open" else "source_clicks"] += 1
         return counts
 
     @staticmethod
     def _stat(counter: Counter[str] | None) -> dict[str, int]:
         c = counter or Counter()
-        stat = {k: int(c.get(k, 0)) for k in WEIGHTS}
+        stat = {k: int(c.get(k, 0)) for k in COUNTED}
         stat["score"] = sum(WEIGHTS[k] * stat[k] for k in WEIGHTS)
         return stat
 
@@ -135,6 +143,40 @@ class EngagementService:
             self.store.put(
                 Reaction(id=key, member_id=ref, story_id=story_id, community_id=community_id)
             )
+        return self.story_stats(story_id)
+
+    def view(
+        self,
+        ref: str,
+        story_id: str,
+        *,
+        language: str | None = None,
+        community_id: str | None = None,
+    ) -> dict[str, int]:
+        """A member opened the story. Once per member, story and day."""
+
+        self._require_story(story_id)
+        self.nr.member(ref)
+        key = View.key(ref, story_id, "open", utcnow().date().isoformat())
+        if self.store.get(View, key) is None:
+            self.store.put(
+                View(
+                    id=key, member_id=ref, story_id=story_id, language=language,
+                    community_id=community_id,
+                )
+            )  # fmt: skip
+        return self.story_stats(story_id)
+
+    def source_click(self, ref: str, story_id: str, url: str) -> dict[str, int]:
+        """A member followed one of the story's source links. Once per member and link."""
+
+        story = self._require_story(story_id)
+        if url not in {s.url for s in story.sources}:
+            raise EngagementError("That link is not one of this story's sources.")
+        self.nr.member(ref)
+        key = View.key(ref, story_id, "source", url)
+        if self.store.get(View, key) is None:
+            self.store.put(View(id=key, member_id=ref, story_id=story_id, kind="source", url=url))
         return self.story_stats(story_id)
 
     def unlike(self, ref: str, story_id: str) -> dict[str, int]:
@@ -603,7 +645,7 @@ class EngagementService:
             for topic_id in row["topic_ids"]:
                 while topic_id and topic_id in topics and topic_id not in seen:
                     seen.add(topic_id)
-                    for key in (*WEIGHTS, "score"):
+                    for key in (*COUNTED, "score"):
                         total[topic_id][key] += row[key]
                     total[topic_id]["stories"] += 1
                     topic_id = topics[topic_id].parent_id
@@ -612,11 +654,45 @@ class EngagementService:
                 "topic_id": tid,
                 "name": topics[tid].name,
                 "parent_id": topics[tid].parent_id,
-                **{k: int(c.get(k, 0)) for k in (*WEIGHTS, "score", "stories")},
+                **{k: int(c.get(k, 0)) for k in (*COUNTED, "score", "stories")},
             }
             for tid, c in total.items()
         ]
-        return sorted(out, key=lambda r: (r["score"], r["stories"]), reverse=True)
+        return sorted(out, key=lambda r: (r["score"], r["views"], r["stories"]), reverse=True)
+
+    def tree(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The whole information tree, parents before children, every topic with its reads
+        and engagement (zero where nothing was read), so the editors see its full shape and
+        which branches people open most."""
+
+        topics = [t for t in self.store.find(Topic) if t.status == "active"]
+        scores = {r["topic_id"]: r for r in self.topic_scores(rows=rows)}
+        known = {t.id for t in topics}
+        children: dict[str | None, list[Topic]] = defaultdict(list)
+        for t in topics:
+            children[t.parent_id if t.parent_id in known else None].append(t)
+        zero = dict.fromkeys((*COUNTED, "score", "stories"), 0)
+        out: list[dict[str, Any]] = []
+
+        def walk(parent: str | None, depth: int) -> None:
+            ranked = sorted(
+                children[parent], key=lambda t: (-(scores.get(t.id) or zero)["views"], t.name)
+            )
+            for t in ranked:
+                row = scores.get(t.id) or zero
+                out.append(
+                    {
+                        "topic_id": t.id,
+                        "name": t.name,
+                        "parent_id": t.parent_id,
+                        "depth": depth,
+                        **{k: row[k] for k in zero},
+                    }
+                )
+                walk(t.id, depth + 1)
+
+        walk(None, 0)
+        return out
 
     def community_rankings(
         self, days: int | None = 14, rows: list[dict[str, Any]] | None = None
@@ -643,13 +719,25 @@ class EngagementService:
         return sorted(out, key=lambda r: (-r["score"], r["priority"], r["name"]))
 
     def dashboard(self, days: int = 7, limit: int = 10) -> dict[str, Any]:
-        """What the editors' dashboard shows: the top news, the busiest communities and the
-        topics readers engage with. The stories are read once and shared by all three."""
+        """What the editors' dashboard shows: the most-read and most-engaged news, the busiest
+        communities, the languages people read in and the information tree with its reads.
+        The stories are read once and shared by all of them."""
 
         stats = self.all_stats(days)
         rows = self._rows(days, stats=stats)
-        totals = {k: sum(s[k] for s in stats.values()) for k in WEIGHTS}
+        totals = {k: sum(s[k] for s in stats.values()) for k in COUNTED}
         follows = self.store.find(Follow)
+        since = utcnow() - timedelta(days=days)
+        by_language: Counter[str] = Counter(
+            v.language or "unknown"
+            for v in self.store.find(View)
+            if v.kind == "open" and v.created_at >= since
+        )
+        most_read = sorted(
+            (r for r in rows if r["views"]),
+            key=lambda r: (r["views"], r["source_clicks"], r["score"]),
+            reverse=True,
+        )
         return {
             "generated_at": utcnow(),
             "days": days,
@@ -658,9 +746,14 @@ class EngagementService:
                 "follows": len(follows),
                 "members_following": len({f.member_id for f in follows}),
             },
+            "most_read": most_read[:limit],
             "top_stories": rows[:limit],
             "top_communities": self.community_rankings(days, rows)[:limit],
             "top_topics": self.topic_scores(days, rows)[:limit],
+            "views_by_language": [
+                {"language": lang, "views": n} for lang, n in by_language.most_common()
+            ],
+            "tree": self.tree(rows),
         }
 
     # ------------------------------------------------------------ editor posting
@@ -702,9 +795,18 @@ class EngagementService:
             raise EngagementError("Choose dashboard, community or both.")
         need_list = [UserNeed(n) for n in (needs or [UserNeed.INFORMATION.value])]
         refs = [
-            SourceRef(name=s["name"], url=s["url"], official=bool(s.get("official")), origin="editor")
+            SourceRef(
+                name=s["name"].strip(),
+                url=s["url"].strip(),
+                official=bool(s.get("official")),
+                origin="editor",
+                note=(s.get("note") or "").strip(),
+            )
             for s in (sources or [])
+            if (s.get("name") or "").strip()
         ]
+        if not refs or any(not r.url.lower().startswith(("http://", "https://")) for r in refs):
+            raise EngagementError("Every story needs at least one source with a web link.")
         text = f"{headline} {standfirst} {body_md}"
         risk, _ = guards.classify_risk(text, self.nr.ctx.policy)
 

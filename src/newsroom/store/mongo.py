@@ -33,6 +33,7 @@ _COLLECTIONS = [
     "reactions",
     "comments",
     "shares",
+    "views",
     "agent_runs",
 ]
 
@@ -59,7 +60,7 @@ class MongoStore:
         self.db["reviews"].create_index([("story_id", ASCENDING), ("story_version", ASCENDING)])
         self.db["follows"].create_index([("member_id", ASCENDING)])
         self.db["follows"].create_index([("target_kind", ASCENDING), ("target_id", ASCENDING)])
-        for name in ("reactions", "comments", "shares"):
+        for name in ("reactions", "comments", "shares", "views"):
             self.db[name].create_index([("story_id", ASCENDING), ("created_at", -1)])
         self.db["agent_runs"].create_index([("run_id", ASCENDING), ("created_at", ASCENDING)])
 

@@ -155,16 +155,16 @@ def test_machine_draft_allowed_only_for_spot_check_low_risk_lanes():
     ctx = make_ctx()
     story, comm, report = _ready(ctx, "sapmi-north", title="Winter bus timetables", articles=None)
     story.risk_tier = RiskTier.LOW
-    fi = Translation(
-        id=new_id("tr"), story_id=story.id, story_version=story.version, language="fi",
-        headline="Otsikko", standfirst="Ingressi", body_md="Teksti",
+    sv = Translation(
+        id=new_id("tr"), story_id=story.id, story_version=story.version, language="sv",
+        headline="Rubrik", standfirst="Ingress", body_md="Text",
     )  # fmt: skip
     se = TranslatorAgent(ctx).translate(story, comm.lane("se"), comm)  # type: ignore[arg-type]
     agent = DistributorAgent(ctx)
 
-    langs = agent._publishable_languages(story, [fi, se], comm, RiskTier.LOW)
-    assert [code for code, _ in langs] == ["en", "fi"]  # Sámi never published without a human
-    langs = agent._publishable_languages(story, [fi, se], comm, RiskTier.HIGH)
+    langs = agent._publishable_languages(story, [sv, se], comm, RiskTier.LOW)
+    assert [code for code, _ in langs] == ["en", "sv"]  # Sámi never published without a human
+    langs = agent._publishable_languages(story, [sv, se], comm, RiskTier.HIGH)
     assert [code for code, _ in langs] == ["en"]  # HIGH risk machine drafts are held back
 
 

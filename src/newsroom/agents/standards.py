@@ -41,6 +41,8 @@ from newsroom.domain import (
 from newsroom.llm.base import LLMError
 
 _RISK_ORDER = {RiskTier.LOW: 0, RiskTier.ELEVATED: 1, RiskTier.HIGH: 2}
+# Blocking even in hackathon mode: no story goes out empty or without a linked source.
+ALWAYS_BLOCKING = {"Story has a body", "Sources acknowledged with links"}
 _STOP = {
     "what", "this", "that", "with", "your", "from", "about", "will", "have", "they", "their",
     "means", "mean", "here", "next", "into", "more", "than", "when", "which", "for", "the",
@@ -134,7 +136,7 @@ class StandardsEditorAgent(Agent):
                     # Hackathon mode: findings are shown to the editor but do not stop a
                     # publish, except an empty draft. STRICT_STANDARDS=true restores blocking.
                     blocking=blocking
-                    and (self.ctx.settings.strict_standards or name == "Story has a body"),
+                    and (self.ctx.settings.strict_standards or name in ALWAYS_BLOCKING),
                 )
             )
 
@@ -167,6 +169,13 @@ class StandardsEditorAgent(Agent):
             bool(story.sources) and not bad_links,
             "No sources listed." if not story.sources else f"Missing link: {', '.join(bad_links)}",
             blocking=True,
+        )  # fmt: skip
+
+        outlets = {s.name for s in story.sources if s.origin != "agent_reference"}
+        add(
+            "7–17", "Two or more sources where available", len(outlets) >= 2,
+            f"Only {len(outlets)} source reported this. Look for a second, independent source, "
+            "or keep the story clearly attributed to the one it has.",
         )  # fmt: skip
 
         opinion = _OPINION.findall(text)

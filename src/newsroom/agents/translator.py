@@ -163,7 +163,8 @@ class TranslatorAgent(Agent):
         system = self._system(
             "You are a careful news translator. Translate faithfully into the target language. "
             "Keep every number, date and amount exactly. Keep protected terms recognisable: "
-            "write the Finnish term in brackets after your translation. Do not add or remove facts."
+            "write the Finnish term in brackets after your translation. Do not add or remove facts. "
+            "Keep the Markdown structure: every '## ' heading stays a heading, translated."
         )
         prompt = (
             f"Target language: {lane.label} ({lane.code}). Protected terms: {protected}.\n"

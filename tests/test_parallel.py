@@ -101,10 +101,10 @@ def test_feeds_and_pages_are_downloaded_side_by_side_and_stored_in_priority_orde
 
     def fake_page(url, *, settings=None, client=None):
         time.sleep(0.1)
-        return f"full text of {url}"
+        return f"full text of {url}", None
 
     monkeypatch.setattr("newsroom.agents.monitor.fetch_feed", fake_fetch)
-    monkeypatch.setattr("newsroom.agents.monitor.extract_content", fake_page)
+    monkeypatch.setattr("newsroom.agents.monitor.extract_page", fake_page)
     sources = [_source("bbc"), _source("yle"), _source("kaleva"), _source("city", True)]
 
     def scan(workers: int):
@@ -170,4 +170,5 @@ def test_a_whole_cycle_runs_side_by_side_with_the_same_result_only_faster():
     assert summary(report_b) == summary(report_a)  # the same stories, in the same order
     assert sorted(t for t, _ in parallel.ctx.llm.calls) == sorted(t for t, _ in in_turn.ctx.llm.calls)
     assert report_b.topic_links == report_a.topic_links
-    assert parallel_time < in_turn_time / 2.5, (in_turn_time, parallel_time)
+    # One story per event leaves fewer (and so less parallel) stories in the fixture cycle.
+    assert parallel_time < in_turn_time / 1.5, (in_turn_time, parallel_time)

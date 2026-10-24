@@ -10,7 +10,11 @@ from newsroom.domain import Comment, Follow, Publication, Reaction, Share, Story
 from newsroom.engagement import EngagementError
 
 
+SOURCE = {"name": "Oulu Region Public Transport (OSL)", "url": "https://www.osl.fi/", "official": True}
+
+
 def post(nr, headline="Bus timetables change", communities=None, language="en", **kw):
+    kw.setdefault("sources", [SOURCE])
     return nr.engagement.editor_post(
         editor="Aino Editor",
         headline=headline,
@@ -25,10 +29,11 @@ def post(nr, headline="Bus timetables change", communities=None, language="en", 
 # ------------------------------------------------------------------ the communities
 
 
-def test_ten_communities_cover_english_arabic_sami_and_finnish(newsroom):
+def test_ten_communities_cover_english_arabic_and_sami_but_not_plain_finnish(newsroom):
     assert len(newsroom.communities) == 10
     languages = {lane.code for c in newsroom.communities.values() for lane in c.languages}
-    assert {"en", "ar", "se", "fi"} <= languages
+    assert {"en", "ar", "se"} <= languages
+    assert "fi" not in languages  # Finnish speakers have Finnish media; we serve everyone else
     assert newsroom.communities["new-in-finland"].priority == 1  # the most important first
 
 
@@ -142,7 +147,8 @@ def test_an_editor_post_can_go_to_chosen_communities_and_destinations(newsroom):
 def test_software_cannot_post_and_empty_posts_are_refused(newsroom):
     with pytest.raises(EngagementError):
         newsroom.engagement.editor_post(
-            editor="bot", headline="h", standfirst="", body_md="b", community_ids=None
+            editor="bot", headline="h", standfirst="", body_md="b", community_ids=None,
+            sources=[SOURCE],
         )
     with pytest.raises(EngagementError):
         post(newsroom, headline="  ")
@@ -315,6 +321,7 @@ def test_api_round_trip(newsroom):
                 "headline": "New bus lines",
                 "body_md": "Details inside.",
                 "community_ids": ["new-in-finland"],
+                "sources": [SOURCE],
             },
         )
         assert posted.status_code == 201
@@ -391,9 +398,75 @@ def test_top_news_and_community_feeds_can_be_limited_to_a_reading_language(newsr
 def test_recommendations_skip_communities_the_member_cannot_read(newsroom):
     e = newsroom.engagement  # an English reader
     ids = {r["id"] for r in e.recommend("en-reader", limit=30)}
-    assert "sapmi-north" not in ids  # Sámi and Finnish only
+    assert "sapmi-north" not in ids  # no English edition
     assert "arabic-speakers-finland" in ids  # it also publishes in English
     assert "new-in-finland" in ids
 
-    e.set_language("fi-reader", "fi")
-    assert "sapmi-north" in {r["id"] for r in e.recommend("fi-reader", limit=30)}
+    e.set_language("sv-reader", "sv")
+    assert "sapmi-north" in {r["id"] for r in e.recommend("sv-reader", limit=30)}
+
+
+# ------------------------------------------------- sources, reads and the editors' dashboard
+
+
+def test_an_editor_post_without_a_linked_source_is_refused(newsroom):
+    with pytest.raises(EngagementError, match="source"):
+        post(newsroom, sources=[])
+    with pytest.raises(EngagementError, match="source"):
+        post(newsroom, sources=[{"name": "A friend", "url": "told me"}])
+    sid = post(newsroom, sources=[{**SOURCE, "note": "Runs the buses."}])["story_id"]
+    assert newsroom.store.get(Story, sid).sources[0].note == "Runs the buses."
+
+
+def test_views_count_once_a_day_and_source_clicks_once_per_link(newsroom):
+    sid = post(newsroom)["story_id"]
+    e = newsroom.engagement
+    e.view("r1", sid, language="ar")
+    e.view("r1", sid, language="ar")  # a refresh is not a second reader
+    stats = e.view("r2", sid, language="en")
+    assert stats["views"] == 2 and stats["score"] == 0  # reads sit beside the score
+
+    assert e.source_click("r1", sid, SOURCE["url"])["source_clicks"] == 1
+    assert e.source_click("r1", sid, SOURCE["url"])["source_clicks"] == 1
+    with pytest.raises(EngagementError):
+        e.source_click("r1", sid, "https://elsewhere.example/")
+    with pytest.raises(KeyError):
+        e.view("r1", "story_missing")
+
+
+def test_the_dashboard_ranks_most_read_and_shows_the_whole_tree(newsroom):
+    e = newsroom.engagement
+    quiet = post(newsroom, headline="Library hours")["story_id"]
+    busy = post(newsroom, headline="Bus timetables change")["story_id"]
+    for reader in ("r1", "r2", "r3"):
+        e.view(reader, busy, language="uk")
+    e.view("r1", quiet, language="en")
+    e.like("r9", quiet)
+
+    board = e.dashboard()
+    assert [r["story_id"] for r in board["most_read"]] == [busy, quiet]
+    assert board["most_read"][0]["views"] == 3
+    assert board["totals"]["views"] == 4
+    assert board["views_by_language"][0] == {"language": "uk", "views": 3}
+
+    tree = board["tree"]
+    assert tree and tree[0]["depth"] == 0  # roots first
+    ids = [t["topic_id"] for t in tree]
+    for i, node in enumerate(tree):
+        if node["parent_id"] in ids:
+            assert ids.index(node["parent_id"]) < i  # parents before children
+    assert all("views" in t for t in tree)
+
+
+def test_the_api_records_views_and_source_clicks(newsroom):
+    headers = {"X-User-Ref": "member-1"}
+    sid = post(newsroom)["story_id"]
+    with TestClient(create_app(newsroom)) as client:
+        assert client.put(f"/stories/{sid}/view", json={"language": "en"}, headers=headers).json()["views"] == 1
+        assert client.put(f"/stories/{sid}/view", headers=headers).json()["views"] == 1
+        clicked = client.post(f"/stories/{sid}/source-click", json={"url": SOURCE["url"]}, headers=headers)
+        assert clicked.json()["source_clicks"] == 1
+        bad = client.post(f"/stories/{sid}/source-click", json={"url": "https://x.example"}, headers=headers)
+        assert bad.status_code == 422
+        board = client.get("/dashboard/engagement").json()
+        assert board["most_read"][0]["story_id"] == sid and board["tree"]
