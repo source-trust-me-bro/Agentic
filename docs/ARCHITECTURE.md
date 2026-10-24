@@ -19,6 +19,7 @@ store for tests) holds the facts and the audit trail. The model layer is replace
 | Copy chief | `StandardsEditorAgent` | Checks the Journalist's Guidelines, classifies risk, decides which humans must review. | Editor-in-chief. |
 | Publisher | `DistributorAgent` | Renders per channel; **refuses** to publish without approvals. | — |
 | Community desk | `CommunityDeskAgent` | Moderates and triages questions, tips, corrections, local knowledge. | Editors. |
+| Graph keeper | `TopicConnectorAgent` | Links semantically related topics (shared events, entities, subject matter) and submits the relationships through the backend API. See [CONNECTOR.md](CONNECTOR.md). | The backend validates; editors curate the tree. |
 
 ## Data flow
 

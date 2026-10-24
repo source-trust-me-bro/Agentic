@@ -20,6 +20,7 @@ Built for the Kaleva Media challenge. It follows the Council for Mass Media's
 | [docs/BUSINESS_MODEL.md](docs/BUSINESS_MODEL.md) | Payers, willingness to pay, independence, costs |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | How we test quality, errors and safety |
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | How the community is connected in the app |
+| [docs/CONNECTOR.md](docs/CONNECTOR.md) | The topic connector: semantic relationships through the backend API |
 
 ## Quick start (offline, no keys)
 
@@ -27,7 +28,7 @@ Built for the Kaleva Media challenge. It follows the Council for Mass Media's
 cd D:\Agentic
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -m pytest                       # 148 tests
+.venv\Scripts\python.exe -m pytest                       # 220 tests including the connector
 $env:PYTHONPATH = "src"
 .venv\Scripts\python.exe -m newsroom demo                # end-to-end walkthrough on fixtures
 .venv\Scripts\python.exe -m newsroom serve               # API on http://127.0.0.1:8100/docs
@@ -51,6 +52,8 @@ Copy `.env.example` to `.env`, then set `LLM_PROVIDER=gemini` and `GEMINI_API_KE
 * Gemini is hosted by Google: it needs network access and an API key and may cost money.
 * A live cycle makes dozens of model calls. With `gemini-3.1-flash-lite` they take a few seconds each, so a cycle takes a minute or two. Cycles run in the background.
 * Set `MONGODB_URI` to persist everything in MongoDB. Without it the store is in memory.
+* Set `BACKEND_API_URL` (+ `BACKEND_API_TOKEN`) to let the connector agent also keep topic
+  relationships in sync through the app API. See [docs/CONNECTOR.md](docs/CONNECTOR.md).
 * Kaleva is paywalled: only its public headline, summary and link are used.
 
 ## How it connects to the app
@@ -65,6 +68,7 @@ questions, tips and correction requests, and give editors a review desk. See
 |---|---|
 | Agents, graph, human gate, checkpoints, audit trail, rules, API | Implemented and tested |
 | Event clustering across outlets and languages, topic tree | Implemented and tested |
+| Topic connector: semantic topic links through the backend API | Implemented and tested; needs `BACKEND_API_URL` and a bearer credential the backend accepts |
 | Kaleva (paywalled) handled as headline and link only | Implemented. Full text needs licensed access |
 | Gemini provider | Implemented and exercised against the live API for the clustering task |
 | Offline model | Rule-based stand-in. **Not real translation** |

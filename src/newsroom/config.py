@@ -71,6 +71,20 @@ class Settings(BaseSettings):
     official_sources_file: str = str(ROOT / "config" / "official_sources.yaml")
     policy_file: str = str(ROOT / "config" / "policy.yaml")
 
+    # Topic-graph integration with the application backend's REST API (see the Backend
+    # README, "Topic relationships"). When the URL is empty the connector only reports
+    # what it would link, in the agent trace. The token is a bearer credential the
+    # backend accepts with the editor role; the backend owns integrity, so a failed or
+    # unauthorized call can never corrupt the graph.
+    backend_api_url: str = ""  # e.g. http://127.0.0.1:8000 (/api/v1 is appended by the client)
+    backend_api_token: str = ""
+    # The connector narrows candidates with deterministic lexical scores (no model) and
+    # spends at most one model call per run judging the shortlist.
+    connector_uses_model: bool = False
+    connector_prefilter_score: float = 0.12  # candidate shortlist threshold
+    connector_min_similarity: float = 0.34  # accepted without a model judgement
+    connector_max_candidates: int = 20  # pairs judged per run (scalability, no O(n²) model calls)
+
 
 @lru_cache
 def get_settings() -> Settings:

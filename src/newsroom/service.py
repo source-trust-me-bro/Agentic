@@ -13,6 +13,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from newsroom.agents.architect import ArchitectResult, KnowledgeArchitectAgent
 from newsroom.agents.base import AgentContext
 from newsroom.agents.community_desk import CommunityDeskAgent
+from newsroom.agents.connector import ConnectorResult, TopicConnectorAgent
 from newsroom.agents.distributor import DistributorAgent
 from newsroom.agents.editor import NewsEditorAgent
 from newsroom.agents.monitor import MonitorAgent
@@ -78,6 +79,7 @@ class CycleReport:
     articles_processed: int = 0
     articles_deferred: int = 0  # saved, and picked up by the next cycle
     stopped_reason: str | None = None
+    connector: dict[str, Any] | None = None  # topic-relationship work, when configured
 
 
 def make_checkpointer(settings: Settings, *, persistent: bool = True) -> Any:
@@ -122,6 +124,7 @@ class Newsroom:
         self.architect = KnowledgeArchitectAgent(self.ctx)
         self.editor = NewsEditorAgent(self.ctx)
         self.desk = CommunityDeskAgent(self.ctx)
+        self.connector = TopicConnectorAgent(self.ctx)
         self.distributor = DistributorAgent(self.ctx)
         self.workflow = StoryWorkflow(
             self.ctx,
@@ -207,7 +210,35 @@ class Newsroom:
                     break
                 report.runs.append(self._run_story(pitch))
         report.stopped_reason = self.limits.triggered
+        connector_report = self._run_connector()
+        if connector_report is not None:
+            report.connector = connector_report.model_dump(mode="json")
         return report
+
+    def _run_connector(self) -> ConnectorResult | None:
+        """Link related topics through the backend API when the integration is on.
+
+        Runs inside the normal cycle (same run id, same model budget, persisted
+        traces). A failed backend call must never break the cycle: the result
+        records it and the next run converges on the same graph.
+        """
+
+        if not self.settings.backend_api_url:
+            return None
+        reason = self.limits.stop_reason()
+        if reason:
+            self.connector.trace(
+                "run",
+                "deferred",
+                f"cycle budget spent ({reason}); connector waits for the next run",
+            )
+            return None
+        return self.connector.run()
+
+    def run_connector(self) -> ConnectorResult | None:
+        """Refresh topic relationships on demand (no-op when the backend is not configured)."""
+
+        return self._run_connector()
 
     def _run_story(self, pitch: Pitch) -> StoryRun:
         result = self.workflow.start(pitch)
