@@ -24,7 +24,7 @@ def reply(content: str, status: int = 200) -> httpx.Response:
     return httpx.Response(status, json={"choices": [{"message": {"content": content}}]})
 
 
-def make(handler, retries: int = 2) -> tuple[OpenAICompatLLM, list[dict]]:
+def make(handler, retries: int = 2, **options) -> tuple[OpenAICompatLLM, list[dict]]:
     seen: list[dict] = []
 
     def route(request: httpx.Request) -> httpx.Response:
@@ -39,6 +39,7 @@ def make(handler, retries: int = 2) -> tuple[OpenAICompatLLM, list[dict]]:
         base_url="https://router.example.test/v1",
         retries=retries,
         transport=httpx.MockTransport(route),
+        **options,
     )
     return llm, seen
 
@@ -122,3 +123,28 @@ def test_the_provider_needs_a_token_and_is_wired_into_the_settings():
     llm = build_llm(Settings(llm_provider="huggingface", hf_token=TOKEN, mongodb_uri=""))
     assert llm.name == "huggingface"
     assert Settings(mongodb_uri="").hf_model.startswith("deepseek-ai/")
+
+
+def test_nvidia_is_a_provider_that_needs_its_key_and_defaults_to_glm():
+    settings = Settings(mongodb_uri="")
+    assert settings.nvidia_model == "z-ai/glm-5.3"
+    assert settings.nvidia_base_url == "https://integrate.api.nvidia.com/v1"
+
+    with pytest.raises(LLMError):
+        build_llm(Settings(llm_provider="nvidia", nvidia_api_key="", mongodb_uri=""))
+
+    llm = build_llm(Settings(llm_provider="nvidia", nvidia_api_key=TOKEN, mongodb_uri=""))
+    assert llm.name == "nvidia"
+    assert llm._url == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert llm._model == "z-ai/glm-5.3"
+
+
+def test_json_mode_is_only_requested_when_the_endpoint_takes_it():
+    plain, plain_seen = make(lambda _n, _r: reply('{"ok": true}'), json_mode=False)
+    flagged, flagged_seen = make(lambda _n, _r: reply('{"ok": true}'))
+
+    plain.check()
+    flagged.check()
+
+    assert "response_format" not in plain_seen[0]["body"]
+    assert flagged_seen[0]["body"]["response_format"] == {"type": "json_object"}

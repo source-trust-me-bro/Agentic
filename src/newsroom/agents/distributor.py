@@ -19,6 +19,7 @@ from newsroom.domain import (
     Channel,
     Community,
     Decision,
+    Pitch,
     Publication,
     Rendition,
     ReviewDecision,
@@ -41,10 +42,14 @@ _NON_HUMAN_REVIEWERS = {
 SHORT_DISCLOSURE = {
     "en": "AI-assisted, approved by a human editor.",
     "fi": "Tekoälyavusteinen, toimittajan hyväksymä.",
+    "sv": "AI-stödd, godkänd av en mänsklig redaktör.",
+    "ar": "أُعدّ بمساعدة الذكاء الاصطناعي وبموافقة محرر بشري.",
 }
 CORRECTION_LINE = {
     "en": "Spotted a mistake? Tell us and we will publish a correction.",
     "fi": "Huomasitko virheen? Kerro meille, niin julkaisemme oikaisun.",
+    "sv": "Hittade du ett fel? Berätta för oss så publicerar vi en rättelse.",
+    "ar": "هل لاحظت خطأً؟ أخبرنا وسننشر تصحيحًا.",
 }
 
 
@@ -161,11 +166,14 @@ class DistributorAgent(Agent):
             for code, text in languages:
                 renditions.append(self._render_channel(story, channel, code, text))
 
+        pitch = self.store.get(Pitch, story.pitch_id)
         publication = Publication(
             id=new_id("pub"),
             story_id=story.id,
             story_version=story.version,
             community_id=community.id,
+            destinations=(pitch.publish_to if pitch and pitch.publish_to else None)
+            or ["dashboard", "community"],
             renditions=renditions,
             approval_ids=[d.id for d in used],
         )
@@ -310,7 +318,17 @@ class DistributorAgent(Agent):
     ) -> list[tuple[str, tuple[str, str, str]]]:
         """(code, (headline, standfirst, body)) for every language allowed to go out."""
 
-        out = [(story.language, (story.headline, story.standfirst, story.body_md))]
+        out = []
+        base_lane = community.lane(story.language)
+        if base_lane is not None and base_lane.human_review == "human_only":
+            # A story the machine wrote in a human-only language (North Sámi) is never published.
+            self.trace(
+                "language", "skipped",
+                f"{story.language} is human-only and this draft was written by a model",
+                lane=story.language,
+            )  # fmt: skip
+        else:
+            out.append((story.language, (story.headline, story.standfirst, story.body_md)))
         for lane in community.languages:
             if lane.code == story.language:
                 continue
@@ -328,13 +346,18 @@ class DistributorAgent(Agent):
                 )
                 continue
             human_ok = translation.status == "human_reviewed"
-            machine_ok = (
-                translation.status == "machine_draft"
-                and lane.tier == "A"
-                and lane.human_review == "spot_check"
-                and risk is not RiskTier.HIGH
-                and not translation.backtranslation_flags
-            )
+            if self.ctx.settings.strict_standards:
+                machine_ok = (
+                    translation.status == "machine_draft"
+                    and lane.tier == "A"
+                    and lane.human_review == "spot_check"
+                    and risk is not RiskTier.HIGH
+                    and not translation.backtranslation_flags
+                )
+            else:
+                # Hackathon mode: the editor's approval releases every machine translation too.
+                # It stays labelled as machine-translated on the story.
+                machine_ok = translation.status == "machine_draft"
             if not (human_ok or machine_ok):
                 self.trace(
                     "language", "skipped",

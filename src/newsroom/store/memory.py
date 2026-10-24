@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -21,25 +23,50 @@ class MemoryStore:
     def __init__(self) -> None:
         self._data: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
         self._traces: list[TraceEvent] = []
+        self._lock = threading.RLock()  # stories are processed side by side
 
     def put(self, doc: Doc) -> None:
-        self._data[doc.COLLECTION][doc.id] = doc.model_dump(mode="python")
+        with self._lock:
+            self._data[doc.COLLECTION][doc.id] = doc.model_dump(mode="python")
 
     def get(self, cls: type[D], doc_id: str) -> D | None:
-        raw = self._data[cls.COLLECTION].get(doc_id)
+        with self._lock:
+            raw = self._data[cls.COLLECTION].get(doc_id)
         return cls.model_validate(raw) if raw else None
 
     def find(self, cls: type[D], **equals: Any) -> list[D]:
-        out = []
-        for raw in self._data[cls.COLLECTION].values():
-            if all(raw.get(key) == value for key, value in equals.items()):
-                out.append(cls.model_validate(raw))
-        return out
+        with self._lock:
+            rows = list(self._data[cls.COLLECTION].values())
+        return [
+            cls.model_validate(raw)
+            for raw in rows
+            if all(raw.get(key) == value for key, value in equals.items())
+        ]
+
+    def get_many(self, cls: type[D], ids: Iterable[str]) -> dict[str, D]:
+        with self._lock:
+            rows = {i: self._data[cls.COLLECTION].get(i) for i in dict.fromkeys(ids)}
+        return {i: cls.model_validate(raw) for i, raw in rows.items() if raw}
+
+    def find_in(self, cls: type[D], field: str, values: Iterable[Any], **equals: Any) -> list[D]:
+        wanted = set(values)
+        with self._lock:
+            rows = list(self._data[cls.COLLECTION].values())
+        return [
+            cls.model_validate(raw)
+            for raw in rows
+            if raw.get(field) in wanted and all(raw.get(k) == v for k, v in equals.items())
+        ]
 
     def delete(self, cls: type[Doc], doc_id: str) -> bool:
-        return self._data[cls.COLLECTION].pop(doc_id, None) is not None
+        with self._lock:
+            return self._data[cls.COLLECTION].pop(doc_id, None) is not None
 
     def upsert_article(self, article: Article) -> tuple[Article, bool]:
+        with self._lock:
+            return self._upsert_article(article)
+
+    def _upsert_article(self, article: Article) -> tuple[Article, bool]:
         for raw in self._data[Article.COLLECTION].values():
             same_url = raw["url"] == article.url
             same_hash = (
@@ -63,7 +90,9 @@ class MemoryStore:
         if not wanted:
             return []
         scored: list[tuple[int, Article]] = []
-        for raw in self._data[Article.COLLECTION].values():
+        with self._lock:
+            rows = list(self._data[Article.COLLECTION].values())
+        for raw in rows:
             article = Article.model_validate(raw)
             if exclude_ids and article.id in exclude_ids:
                 continue
@@ -79,9 +108,10 @@ class MemoryStore:
         return [article for _, article in scored[:limit]]
 
     def trace(self, event: TraceEvent) -> None:
-        self._traces.append(event)
+        with self._lock:
+            self._traces.append(event)
 
     def traces(self, run_id: str | None = None) -> list[TraceEvent]:
-        if run_id is None:
-            return list(self._traces)
-        return [t for t in self._traces if t.run_id == run_id]
+        with self._lock:
+            traces = list(self._traces)
+        return traces if run_id is None else [t for t in traces if t.run_id == run_id]

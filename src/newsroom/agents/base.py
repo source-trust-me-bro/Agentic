@@ -14,6 +14,7 @@ from newsroom.domain import TraceEvent, new_id
 from newsroom.limits import CycleLimits
 from newsroom.llm.base import LLM
 from newsroom.policy import Policy, get_policy
+from newsroom.progress import CycleProgress
 from newsroom.store.base import Store
 
 
@@ -25,6 +26,7 @@ class AgentContext:
     policy: Policy = field(default_factory=get_policy)
     run_id: str = field(default_factory=lambda: new_id("run"))
     limits: CycleLimits = field(default_factory=CycleLimits.unlimited)
+    progress: CycleProgress = field(default_factory=CycleProgress)  # what the editor sees
 
 
 class Agent:

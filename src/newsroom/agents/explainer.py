@@ -33,9 +33,44 @@ from newsroom.domain import (
     new_id,
     utcnow,
 )
+from newsroom.langdetect import LANGUAGE_NAMES, detect_language
 from newsroom.llm.base import LLMError
 
 _RISK_ORDER = {RiskTier.LOW: 0, RiskTier.ELEVATED: 1, RiskTier.HIGH: 2}
+
+
+def word_count(text: str) -> int:
+    """Words a reader sees: markdown symbols do not count."""
+
+    return len(re.findall(r"[^\s#*_`>|-]+", text or ""))
+
+
+def limit_words(text: str, limit: int) -> str:
+    """Keep whole paragraphs, then whole sentences, until ``limit`` words. Never cuts a
+    sentence in half, so the story still reads cleanly."""
+
+    if word_count(text) <= limit:
+        return text
+    kept: list[str] = []
+    used = 0
+    for block in re.split(r"\n\s*\n", text.strip()):
+        size = word_count(block)
+        if used + size <= limit:
+            kept.append(block)
+            used += size
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+", block)
+        partial: list[str] = []
+        for sentence in sentences:
+            if used + word_count(sentence) > limit:
+                break
+            partial.append(sentence)
+            used += word_count(sentence)
+        # Drop a heading or list fragment left without its content.
+        if partial and not re.match(r"^\s*(#|[-*] )", " ".join(partial)):
+            kept.append(" ".join(partial))
+        break
+    return "\n\n".join(kept).strip()
 
 _STOPWORDS = {
     "the", "and", "for", "that", "this", "with", "from", "are", "was", "were", "has",
@@ -241,17 +276,28 @@ class ExplainerAgent(Agent):
 
         draft: StoryDraft | None = None
         problems: list[str] = []
+        language_fix: list[str] = []
         try:
             for attempt in range(2):
                 draft = self._draft(
-                    pitch, claims, community, articles, feedback + problems, attempt
+                    pitch, claims, community, articles, feedback + problems + language_fix, attempt
                 )
                 problems = verify_story_claims(self._text(draft), claims)
-                if not problems:
+                # The model sometimes answers in the language of its sources instead of English.
+                written = detect_language(self._text(draft))
+                language_fix = (
+                    [
+                        "Write the whole story in English. The last draft was in "
+                        f"{LANGUAGE_NAMES.get(written, written)}."
+                    ]
+                    if written not in (None, "en")
+                    else []
+                )
+                if not problems and not language_fix:
                     break
                 self.trace(
-                    "verify", "model draft broke claim rules", "; ".join(problems)[:500],
-                    attempt=attempt + 1,
+                    "verify", "model draft needs another pass",
+                    "; ".join(problems + language_fix)[:500], attempt=attempt + 1,
                 )  # fmt: skip
         except LLMError as exc:
             self.trace("draft", "model unavailable", str(exc)[:300], pitch_id=pitch.id)
@@ -266,7 +312,15 @@ class ExplainerAgent(Agent):
         notes = self._ground_notes(draft.context_notes, articles, community)
         body = self._finish_body(body, claims, notes)
         headline = re.sub(r"[#*_`]+", "", draft.headline).strip() or pitch.working_title
-        standfirst = draft.standfirst.strip()
+        # Byte-sized: the standfirst is the gist, and the whole story stays under the limit.
+        limit = self.settings.max_story_words
+        standfirst = limit_words(draft.standfirst.strip(), min(35, limit // 4))
+        body_before = word_count(body)
+        body = limit_words(body, max(limit - word_count(standfirst), limit // 2))
+        if word_count(body) < body_before:
+            self.trace(
+                "length", "trimmed", f"body cut from {body_before} to {word_count(body)} words"
+            )
 
         remaining = verify_story_claims(f"{headline}\n\n{standfirst}\n\n{body}", claims)
         if remaining:
@@ -281,12 +335,24 @@ class ExplainerAgent(Agent):
             self.trace("verify", "claim problems remain", "; ".join(remaining)[:500])
 
         full_text = f"{headline}\n{standfirst}\n{body}"
+        # Never file text under the wrong language: if it is still not English, say what it is.
+        written_in = detect_language(full_text) or "en"
+        if written_in != "en":
+            notes.append(
+                ContextNote(
+                    text=f"The draft came out in {LANGUAGE_NAMES.get(written_in, written_in)}, "
+                    "not English. It is filed under its real language and needs a person to "
+                    "check it or rewrite it in English.",
+                    kind="human_needed",
+                )
+            )
+            self.trace("language", "draft not in English", written_in, pitch_id=pitch.id)
         story = Story(
             id=new_id("story"),
             pitch_id=pitch.id,
             community_id=community.id,
             version=version,
-            language="en",
+            language=written_in,
             headline=headline,
             standfirst=standfirst,
             body_md=body,
@@ -295,7 +361,7 @@ class ExplainerAgent(Agent):
             claim_ids=[c.id for c in claims],
             sources=self._sources(articles, claims),
             context_notes=notes,
-            ai_disclosure=guards.ai_disclosure("en", self.policy),
+            ai_disclosure=guards.ai_disclosure(written_in, self.policy),
             updated_at=utcnow(),
         )
         self.store.put(story)
@@ -364,6 +430,11 @@ class ExplainerAgent(Agent):
             "two-sided; never state UNKNOWN claims as fact. Mark anything you cannot ground in "
             "the sources as kind=human_needed instead of inventing it. Serve at least one user "
             "need: information, understanding, usefulness, emotion, break, community.\n"
+            f"Byte-sized: the standfirst is the gist in one sentence, and standfirst plus body "
+            f"together must be UNDER {self.settings.max_story_words} words. Lead with what "
+            "happened and what it means for the reader; use short paragraphs and no filler.\n"
+            "Always write in English, whatever the language of the sources or the community: "
+            "the translators make every other language from your English text.\n"
             + guards.UNTRUSTED_PREAMBLE
         )
         prompt = (

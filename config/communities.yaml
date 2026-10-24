@@ -11,6 +11,7 @@
 communities:
   - id: oulu-international
     name: International newcomers in Oulu
+    priority: 2
     description: >
       Work-based immigrants and international professionals (for example in Oulu's tech
       sector), international students and researchers, and their families.
@@ -20,6 +21,8 @@ communities:
       - {code: en, label: English, tier: A, human_review: spot_check}
       - {code: uk, label: Українська, tier: A, human_review: required}
       - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {usefulness: 1.0, understanding: 0.9, information: 0.7, community: 0.6, emotion: 0.2, break: 0.1}
     lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
     channels:
@@ -38,6 +41,7 @@ communities:
 
   - id: lapland-seasonal
     name: Seasonal tourism workers in Lapland
+    priority: 5
     description: >
       Workers who arrive for a winter season (a few months) at ski resorts and tourist
       destinations and quickly need working conditions, housing, healthcare, transport,
@@ -47,6 +51,9 @@ communities:
     languages:
       - {code: en, label: English, tier: A, human_review: spot_check}
       - {code: ru, label: Русский, tier: A, human_review: required}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {usefulness: 1.0, information: 0.8, understanding: 0.6, community: 0.7, break: 0.4, emotion: 0.2}
     lifecycle: {seasonal: true, typical_stay_days: 120, onboarding_window_days: 7}
     channels:
@@ -63,6 +70,7 @@ communities:
 
   - id: sapmi-north
     name: North Sámi speakers
+    priority: 3
     description: >
       Speakers of North Sámi in Finland. There is very little local news in the Sámi
       languages and the language lives through everyday use, so quality and respect for
@@ -72,6 +80,8 @@ communities:
     languages:
       - {code: se, label: Davvisámegiella, tier: C, human_review: human_only}
       - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
     needs_weights: {community: 1.0, usefulness: 0.7, information: 0.7, understanding: 0.6, emotion: 0.5, break: 0.3}
     lifecycle: {seasonal: false, onboarding_window_days: 0}
     channels:
@@ -83,3 +93,181 @@ communities:
       - {id: tv-sapmi-parliament, name: Sámi Parliament information officer, role: information officer, can_review: [community_reviewer, subject_expert], languages: [se, fi]}
     cultural_context:
       - "Sámi names, places and terms must follow community usage, not machine transliteration."
+
+  - id: new-in-finland
+    name: New in Finland (nationwide)
+    priority: 1
+    description: >
+      People who have recently moved to Finland, anywhere in the country, and need to know how things work: permits, registration, banking, healthcare, housing, work and everyday life.
+    regions: [Finland]
+    interests: [residence permits, registration, healthcare, housing, work, taxes, daily life, language courses]
+    languages:
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: uk, label: Українська, tier: A, human_review: required}
+      - {code: ru, label: Русский, tier: A, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
+    needs_weights: {usefulness: 1.0, understanding: 0.9, information: 0.7, community: 0.6, emotion: 0.2, break: 0.1}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-nif-adviser, name: Migration adviser, role: independent migration adviser, can_review: [subject_expert, community_reviewer], languages: [en]}
+      - {id: tv-nif-ar-volunteer, name: Arabic-speaking community volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [ar]}
+      - {id: tv-nif-uk-volunteer, name: Ukrainian community volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [uk]}
+      - {id: tv-nif-ru-volunteer, name: Russian-speaking community volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [ru]}
+    cultural_context:
+      - "Many services need a Finnish personal identity code, which takes a few weeks to get after registering."
+      - "Official information is often only in Finnish and Swedish; the newsroom links the official page."
+
+  - id: arabic-speakers-finland
+    name: Arabic speakers in Finland
+    priority: 4
+    description: >
+      Arabic-speaking residents of Finland, from recent arrivals to long-term residents, who want news and practical information in Arabic.
+    regions: [Finland, Oulu, Helsinki]
+    interests: [residence permits, family reunification, education, healthcare, work, religion and culture, daily life]
+    languages:
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
+    needs_weights: {usefulness: 1.0, community: 0.9, understanding: 0.8, information: 0.7, emotion: 0.3, break: 0.2}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-arabic-volunteer, name: Arabic-speaking community volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [ar]}
+      - {id: tv-arabic-adviser, name: Migration adviser, role: independent migration adviser, can_review: [subject_expert], languages: [en, ar]}
+    cultural_context:
+      - "Arabic is written right to left; names, numbers and Finnish terms must stay readable inside Arabic text."
+      - "Arabic-speaking communities come from many countries; avoid assuming one dialect or background."
+
+  - id: finnish-neighbours
+    name: Finnish speakers who want to know their new neighbours
+    priority: 6
+    description: >
+      Finnish speakers in Oulu and Lapland who want to understand the communities that have joined their towns, and to find where they can help or take part.
+    regions: [Oulu, Lapland, Finland]
+    interests: [integration, local decisions, events, volunteering, language, daily life]
+    languages:
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
+    needs_weights: {understanding: 1.0, community: 0.9, information: 0.7, emotion: 0.4, usefulness: 0.4, break: 0.3}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-neighbours-editor, name: Community editor, role: local community editor, can_review: [community_reviewer], languages: [fi, en]}
+    cultural_context:
+      - "This community is where Finnish readers meet stories about newcomers and Sámi speakers; it is the bridge, not a separate audience."
+
+  - id: international-students-finland
+    name: International students in Finland
+    priority: 7
+    description: >
+      Degree and exchange students at Finnish universities and universities of applied sciences.
+    regions: [Oulu, Helsinki, Tampere, Finland]
+    interests: [studies, student housing, part-time work, residence permits, healthcare, transport, social life]
+    languages:
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
+    needs_weights: {usefulness: 1.0, information: 0.8, community: 0.7, understanding: 0.6, break: 0.4, emotion: 0.2}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-students-buddy, name: Student union buddy, role: international student buddy, can_review: [community_reviewer], languages: [en]}
+      - {id: tv-students-ar-volunteer, name: Arabic-speaking student volunteer, role: volunteer translator, can_review: [language_reviewer], languages: [ar]}
+    cultural_context:
+      - "Students on a residence permit may work a limited number of hours; the rules are set by Migri."
+
+  - id: ukrainians-in-finland
+    name: Ukrainians in Finland
+    priority: 8
+    description: >
+      Ukrainians living in Finland under temporary protection and their families.
+    regions: [Finland, Oulu]
+    interests: [temporary protection, housing, children and school, work, healthcare, benefits, daily life]
+    languages:
+      - {code: uk, label: Українська, tier: A, human_review: required}
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
+    needs_weights: {usefulness: 1.0, information: 0.9, community: 0.7, understanding: 0.7, emotion: 0.3, break: 0.1}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-ukraine-volunteer, name: Ukrainian community volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [uk]}
+      - {id: tv-ukraine-adviser, name: Migration adviser, role: independent migration adviser, can_review: [subject_expert], languages: [en, uk]}
+    cultural_context:
+      - "Rules for temporary protection change; always link the Migri page and show the date of the story."
+
+  - id: workers-rights-finland
+    name: Migrant workers and workers' rights
+    priority: 9
+    description: >
+      Foreign-born employees in Finland, including seasonal and agency workers, who need to know their pay, contract and safety rights.
+    regions: [Finland, Lapland, Oulu]
+    interests: [employment contracts, wages, working hours, dismissal, work safety, unions, residence permits for work]
+    languages:
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: ru, label: Русский, tier: A, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
+    needs_weights: {usefulness: 1.0, information: 0.8, understanding: 0.8, community: 0.5, emotion: 0.2, break: 0.1}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-workers-union, name: Union representative, role: union representative, can_review: [subject_expert, community_reviewer], languages: [en, fi]}
+      - {id: tv-workers-ar-volunteer, name: Arabic-speaking worker volunteer, role: volunteer translator, can_review: [language_reviewer], languages: [ar]}
+      - {id: tv-workers-ru-volunteer, name: Russian-speaking worker volunteer, role: volunteer translator, can_review: [language_reviewer], languages: [ru]}
+    cultural_context:
+      - "Wages in many sectors are set by collective agreements; pay below the agreement can be reported."
+
+  - id: families-in-finland
+    name: Families with children in Finland
+    priority: 10
+    description: >
+      Parents and carers who are new to Finnish daycare, school, health clinics and family services.
+    regions: [Finland, Oulu]
+    interests: [daycare, school, child health clinic, family benefits, leisure activities, language support]
+    languages:
+      - {code: en, label: English, tier: A, human_review: spot_check}
+      - {code: fi, label: Suomi, tier: A, human_review: spot_check}
+      - {code: ar, label: العربية, tier: B, human_review: required}
+      - {code: uk, label: Українська, tier: A, human_review: required}
+      - {code: sv, label: Svenska, tier: A, human_review: spot_check}
+    needs_weights: {usefulness: 1.0, understanding: 0.8, information: 0.7, community: 0.7, emotion: 0.3, break: 0.3}
+    lifecycle: {seasonal: false, typical_stay_days: 1095, onboarding_window_days: 30}
+    channels:
+      - {kind: web, label: Web feed}
+      - {kind: messaging, label: Group message, max_chars: 700}
+      - {kind: digest, label: Weekly email digest}
+    trusted_voices:
+      - {id: tv-families-nurse, name: Child health nurse, role: subject adviser for family health, can_review: [subject_expert], languages: [en]}
+      - {id: tv-families-ar-volunteer, name: Arabic-speaking parent volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [ar]}
+      - {id: tv-families-uk-volunteer, name: Ukrainian parent volunteer, role: volunteer translator, can_review: [language_reviewer, community_reviewer], languages: [uk]}
+    cultural_context:
+      - "Daycare and school places are arranged by the municipality; applying early matters."

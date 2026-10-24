@@ -46,7 +46,7 @@ See [docs/INTEGRATION.md](docs/INTEGRATION.md).
 Copy `.env.example` to `.env`, then set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY`
 (`GEMINI_MODEL` defaults to `gemini-3.1-flash-lite`, `GEMINI_THINKING_LEVEL` to `low`;
 `CYCLE_INTERVAL_MINUTES` makes the agents run a cycle by themselves). Run
-`python -m newsroom cycle` for one pass over the live Kaleva, Yle and BBC feeds.
+`python -m newsroom cycle` for one pass over the live Kaleva, City of Oulu and Migri feeds.
 
 * Gemini is hosted by Google: it needs network access and an API key and may cost money.
 * A live cycle makes dozens of model calls. With `gemini-3.1-flash-lite` they take a few seconds each, so a cycle takes a minute or two. Cycles run in the background.

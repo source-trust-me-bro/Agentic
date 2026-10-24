@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 from newsroom.config import ROOT, get_settings
-from newsroom.domain import Article, Community, SourceConfig, new_id
+from newsroom.domain import Article, Community, OfficialAccount, SourceConfig, new_id
 
 FIXTURE_ARTICLES = ROOT / "fixtures" / "articles.json"
 
@@ -18,6 +18,12 @@ def load_communities(path: str | Path | None = None) -> list[Community]:
     file = Path(path or get_settings().communities_file)
     raw = yaml.safe_load(file.read_text(encoding="utf-8")) or {}
     return [Community.model_validate(item) for item in raw.get("communities", [])]
+
+
+def load_official_accounts(path: str | Path | None = None) -> list[OfficialAccount]:
+    file = Path(path or get_settings().official_accounts_file)
+    raw = yaml.safe_load(file.read_text(encoding="utf-8")) or {}
+    return [OfficialAccount.model_validate(item) for item in raw.get("accounts", [])]
 
 
 def load_sources(path: str | Path | None = None) -> list[SourceConfig]:

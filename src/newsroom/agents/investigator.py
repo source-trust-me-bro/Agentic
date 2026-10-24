@@ -36,6 +36,7 @@ from newsroom.domain import (
 from newsroom.lexicon import concepts, nouns_overlap, numbers, proper_nouns, query_terms
 from newsroom.llm.base import LLMError
 from newsroom.outlets import outlet_of
+from newsroom.parallel import run_parallel
 
 MAX_CLAIMS_PER_PITCH = 8
 PAYWALL_PREFIX = "Paywalled:"
@@ -145,12 +146,14 @@ class InvestigatorAgent(Agent):
         hints = prior.search_hints if prior else []
 
         lookup = dict(articles)
-        for claim in claims:
-            if claim.status in (ClaimStatus.VERIFIED, ClaimStatus.DISPUTED):
-                continue
+
+        def assess(claim: Claim) -> None:
             self._corroborate(claim, lookup, hints)
             self._decide(claim, lookup)
             self.store.put(claim)
+            self.ctx.progress.log(
+                "reporter", f"Checked a claim: {claim.status.value} ({claim.independent_support} outlets)"
+            )
             self.trace(
                 "assess",
                 claim.status.value,
@@ -160,6 +163,14 @@ class InvestigatorAgent(Agent):
                 pitch_id=pitch.id,
                 round=round_no,
             )
+
+        # Each claim is checked on its own (one model call each), so they run side by side.
+        run_parallel(
+            assess,
+            [c for c in claims if c.status not in (ClaimStatus.VERIFIED, ClaimStatus.DISPUTED)],
+            self.settings.claim_workers,
+            "claims",
+        )
 
         open_questions, search_hints = self._gaps(pitch, claims, lookup)
         return InvestigationResult(

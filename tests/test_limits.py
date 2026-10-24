@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -155,14 +157,38 @@ def test_the_stop_endpoint():
             client.app.state.cycle_lock.release()
 
 
-def test_defaults_are_demo_sized():
+def test_the_overview_lists_sources_topics_and_finished_cycles():
+    newsroom = build()
+    with TestClient(create_app(newsroom)) as client:
+        empty = client.get("/overview").json()
+        assert empty["jobs"] == [] and empty["articles"] == 0
+        assert empty["topics"] and empty["sources"]  # the tree and the feeds come from config
+
+        assert client.post("/cycle/start", json={"use_fixtures": True, "news_count": 10}).status_code == 202
+        for _ in range(100):
+            if client.get("/cycle/latest").json()["status"] != "running":
+                break
+            time.sleep(0.1)
+
+        after = client.get("/overview").json()
+        assert len(after["jobs"]) == 1 and after["jobs"][0]["status"] == "done"
+        assert after["articles"] > 0
+        assert sum(s["articles"] for s in after["sources"]) <= after["articles"]
+
+
+def test_a_bad_news_count_is_refused():
+    with TestClient(create_app(build())) as client:
+        assert client.post("/cycle/start", json={"news_count": 7}).status_code == 422
+
+
+def test_defaults_are_bounded_but_roomy_enough_to_finish_a_cycle():
     settings = Settings(llm_provider="fake", mongodb_uri="")
 
-    assert settings.max_items_per_source <= 3
-    assert settings.max_articles_per_cycle <= 30
-    assert settings.max_pitches_per_cycle <= 2
-    assert settings.cycle_max_seconds <= 600
-    assert settings.cycle_max_model_calls <= 150
+    # Every limit exists, so a cycle always ends, but none is tight enough to cut stories off.
+    assert 0 < settings.cycle_max_seconds <= 3600
+    assert 0 < settings.cycle_max_model_calls <= 1000
+    assert settings.max_articles_per_cycle >= 30
+    assert settings.max_pitches_per_cycle >= 2
 
 
 # ------------------------------------------------------------------ the monitor
@@ -191,7 +217,10 @@ def test_official_sources_are_read_first_and_the_cap_stops_the_rest(monkeypatch)
 
     monkeypatch.setattr("newsroom.agents.monitor.fetch_feed", fake_fetch)
     monkeypatch.setattr("newsroom.agents.monitor.extract_content", lambda *a, **k: None)
-    ctx = AgentContext(llm=FakeLLM(), store=MemoryStore(), settings=Settings(mongodb_uri=""))
+    # One feed per wave: this test is about the strict order and the early stop.
+    ctx = AgentContext(
+        llm=FakeLLM(), store=MemoryStore(), settings=Settings(mongodb_uri="", fetch_workers=1)
+    )
     sources = [
         _source("bbc", False),
         _source("kaleva", False),
@@ -201,6 +230,61 @@ def test_official_sources_are_read_first_and_the_cap_stops_the_rest(monkeypatch)
 
     fresh = MonitorAgent(ctx).scan(sources, limit_per_source=2, max_new=4)
 
-    assert [sid for sid, _ in seen] == ["oulu-city", "migri"]  # official first, then stopped
+    # Official feeds are read first, and every feed gets an equal share of the cap.
+    assert [sid for sid, _ in seen] == ["oulu-city", "migri", "bbc", "kaleva"]
     assert all(limit == 2 for _, limit in seen)  # a few items per feed
-    assert {a.source_id for a in fresh} == {"oulu-city", "migri"}
+    assert len(fresh) == 4
+    assert {a.source_id for a in fresh} == {"oulu-city", "migri", "bbc", "kaleva"}
+
+    # With a smaller cap the official feeds still come first and the reading stops there.
+    seen.clear()
+    fresh = MonitorAgent(ctx).scan(sources, limit_per_source=4, max_new=2)
+    assert [sid for sid, _ in seen] == ["oulu-city", "migri"]
+    assert len(fresh) == 2  # stories already stored did not use up the share
+
+
+# ------------------------------------------------ editing sources.yaml needs no restart
+
+
+def test_removing_a_feed_from_sources_yaml_takes_effect_without_a_restart(tmp_path):
+    path = tmp_path / "sources.yaml"
+    path.write_text(
+        "sources:\n"
+        "  - {id: keep-me, name: Keep me, feed_url: 'https://example.test/a', language: en}\n"
+        "  - {id: drop-me, name: Drop me, feed_url: 'https://example.test/b', language: en}\n",
+        encoding="utf-8",
+    )
+    nr = Newsroom(
+        settings=Settings(llm_provider="fake", mongodb_uri="", sources_file=str(path)),
+        store=MemoryStore(),
+        llm=FakeLLM(collect_fake_handlers()),
+        persistent_checkpoints=False,
+    )
+    assert [s.id for s in nr.sources] == ["keep-me", "drop-me"]
+
+    path.write_text(
+        "sources:\n"
+        "  - {id: keep-me, name: Keep me, feed_url: 'https://example.test/a', language: en}\n",
+        encoding="utf-8",
+    )
+    with TestClient(create_app(nr)) as client:
+        listed = [s["id"] for s in client.get("/overview").json()["sources"]]
+    assert listed == ["keep-me"]  # the editor page no longer lists the removed feed
+
+    path.write_text("sources: [this is not valid", encoding="utf-8")
+    nr.reload_sources()
+    assert [s.id for s in nr.sources] == ["keep-me"]  # a broken file keeps the last good list
+
+
+def test_sources_given_to_the_newsroom_are_never_replaced_by_the_file():
+    nr = Newsroom(
+        settings=Settings(llm_provider="fake", mongodb_uri=""),
+        store=MemoryStore(),
+        llm=FakeLLM(),
+        sources=[_source("only-one", False)],
+        persistent_checkpoints=False,
+    )
+
+    nr.reload_sources()
+
+    assert [s.id for s in nr.sources] == ["only-one"]

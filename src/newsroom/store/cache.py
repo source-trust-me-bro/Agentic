@@ -8,6 +8,7 @@ together at the end. Callers get copies, so changing a returned object never cha
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -36,6 +37,12 @@ class ReadCache:
         if key not in self._find:
             self._find[key] = list(self._inner.find(cls, **equals))
         return [doc.model_copy(deep=True) for doc in self._find[key]]  # type: ignore[misc]
+
+    def get_many(self, cls: type[D], ids: Iterable[str]) -> dict[str, D]:
+        return self._inner.get_many(cls, ids)
+
+    def find_in(self, cls: type[D], field: str, values: Iterable[Any], **equals: Any) -> list[D]:
+        return self._inner.find_in(cls, field, values, **equals)
 
     # ---------------------------------------------------------------- writes (pass through)
 

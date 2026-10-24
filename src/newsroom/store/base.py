@@ -3,6 +3,7 @@ conversation: LangGraph state carries ids and small values, the store holds the 
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, Protocol, TypeVar
 
@@ -21,6 +22,14 @@ class Store(Protocol):
         """All documents whose top-level fields equal the given values."""
 
     def delete(self, cls: type[Doc], doc_id: str) -> bool: ...
+
+    # Batch reads. Against a remote database each call is a network round trip, so code that
+    # needs many documents asks for them together instead of one at a time.
+    def get_many(self, cls: type[D], ids: Iterable[str]) -> dict[str, D]:
+        """The documents with these ids, keyed by id. Missing ids are left out."""
+
+    def find_in(self, cls: type[D], field: str, values: Iterable[Any], **equals: Any) -> list[D]:
+        """Documents whose ``field`` is one of ``values`` (and whose other fields equal ``equals``)."""
 
     # Articles get dedicated methods because ingestion and corroboration need them.
     def upsert_article(self, article: Article) -> tuple[Article, bool]:

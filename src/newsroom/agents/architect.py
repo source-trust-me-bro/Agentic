@@ -56,6 +56,10 @@ MIN_AGREEING_KINDS = 2  # independent signal kinds that must agree (number/entit
 WINDOW_HOURS = 72  # a report only joins an event active within this window
 CONFIRMED_MIN_OUTLETS = 2  # independent outlets needed for status "confirmed"
 MAX_TOPICS_PER_EVENT = 2
+# A topic the agents proposed becomes active by itself (no human) once this much of the news
+# backs it: enough different events, reported by enough different outlets.
+MIN_EVENTS_TO_ACTIVATE = 2
+MIN_OUTLETS_TO_ACTIVATE = 2
 QUARANTINE_MARK = "quarantine:injection"
 
 NUMBER_SHARE = 0.6  # score per shared number (capped at 1)
@@ -284,6 +288,7 @@ class Analysis(BaseModel):
 
 class ArchitectResult(BaseModel):
     events: list[Event] = Field(default_factory=list)
+    promoted_topics: list[str] = Field(default_factory=list)  # topics that became active
     proposals: list[TreeProposal] = Field(default_factory=list)
     attached: dict[str, str] = Field(default_factory=dict)  # article_id -> event_id
 
@@ -533,6 +538,7 @@ class KnowledgeArchitectAgent(Agent):
 
     def process(self, articles: list[Article]) -> ArchitectResult:
         result = ArchitectResult()
+        self.ctx.progress.begin("group", total=len(articles), detail="Comparing reports")
         # One batch reads the same events and topics for every article, so read them from memory.
         original = self.store
         cache = ReadCache(original)
@@ -542,7 +548,46 @@ class KnowledgeArchitectAgent(Agent):
         finally:
             cache.flush()
             self.store = original
+        result.promoted_topics = [t.id for t in self.promote_corroborated_topics()]
+        self.ctx.progress.finish_stage(
+            "group", detail=f"{len(result.events)} events from {len(articles)} reports"
+        )
         return result
+
+    def promote_corroborated_topics(self) -> list[Topic]:
+        """Make well-supported agent topics active, so readers get them without waiting.
+
+        Decided by code, not by the model: a proposed topic under an ACTIVE parent becomes active
+        once at least MIN_EVENTS_TO_ACTIVATE different events, reported by at least
+        MIN_OUTLETS_TO_ACTIVATE different outlets, are filed under it. A new top-level topic (no
+        parent) still needs a human editor."""
+
+        topics = {t.id: t for t in self.store.find(Topic)}
+        waiting = [
+            t
+            for t in topics.values()
+            if t.status == "proposed"
+            and t.parent_id is not None
+            and topics.get(t.parent_id) is not None
+            and topics[t.parent_id].status == "active"
+        ]
+        if not waiting:
+            return []
+        events = [e for e in self.store.find(Event) if e.status != "merged"]
+        promoted: list[Topic] = []
+        for topic in waiting:
+            filed = [e for e in events if topic.id in e.topic_ids]
+            outlets = {name for e in filed for name in e.source_names}
+            if len(filed) >= MIN_EVENTS_TO_ACTIVATE and len(outlets) >= MIN_OUTLETS_TO_ACTIVATE:
+                topic.status = "active"
+                self.store.put(topic)
+                promoted.append(topic)
+                self.trace(
+                    "topic", "activated",
+                    f"'{topic.name}' is backed by {len(filed)} events from {len(outlets)} outlets",
+                    topic_id=topic.id,
+                )  # fmt: skip
+        return promoted
 
     def _process_batch(self, articles: list[Article], result: ArchitectResult) -> None:
         for position, article in enumerate(articles):
@@ -555,6 +600,7 @@ class KnowledgeArchitectAgent(Agent):
                 )
                 break
             self._process_one(article, result)
+            self.ctx.progress.advance("group")
 
     def propose_topic(
         self,

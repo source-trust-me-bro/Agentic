@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -38,6 +39,23 @@ class TopicNode(BaseModel):
 
 
 TopicNode.model_rebuild()
+
+
+@lru_cache
+def expected_topic_ids(path: str | None = None) -> frozenset[str]:
+    """The ids of every topic in config/topics.yaml. Read once, so checking that the database
+    has them all costs one query instead of one per topic."""
+
+    raw = yaml.safe_load(Path(path or TOPICS_FILE).read_text(encoding="utf-8")) or {}
+    ids: set[str] = set()
+
+    def walk(items: list[dict]) -> None:
+        for item in items:
+            ids.add(topic_id_for(slugify(item["name"])))
+            walk(item.get("children", []) or [])
+
+    walk(raw.get("topics", []))
+    return frozenset(ids)
 
 
 def seed_topics(store: Store, path: str | Path | None = None) -> list[Topic]:

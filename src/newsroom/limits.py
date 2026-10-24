@@ -22,6 +22,14 @@ class CycleLimits:
     deadline: float | None = None
     active: bool = False
     triggered: str | None = None  # why the cycle was cut short, if it was
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def count_call(self) -> None:
+        """Several stories call the model at once, so the counter is guarded."""
+
+        with self._lock:
+            if self.active:
+                self.calls += 1
 
     def start(self) -> None:
         self.calls = 0

@@ -170,6 +170,8 @@ class Community(Doc):
 
     name: str
     description: str
+    # Lower is more important. Orders community lists and breaks ties in recommendations.
+    priority: int = 100
     regions: list[str] = Field(default_factory=list)
     interests: list[str] = Field(default_factory=list)
     languages: list[LanguageLane]
@@ -200,6 +202,8 @@ class Pitch(Doc):
     score: float = 0.0
     risk_tier: RiskTier = RiskTier.LOW
     origin: Literal["monitor", "community_tip", "editor"] = "monitor"
+    # Where the editor chose to publish it. Empty means both places.
+    publish_to: list[Literal["dashboard", "community"]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -354,6 +358,10 @@ class Publication(Doc):
     community_id: str
     renditions: list[Rendition]
     approval_ids: list[str]  # ReviewDecision ids; a publication without them is invalid
+    # The editor chooses: the reader's dashboard, the community page, or both.
+    destinations: list[Literal["dashboard", "community"]] = Field(
+        default_factory=lambda: ["dashboard", "community"]
+    )
     published_at: datetime = Field(default_factory=utcnow)
 
 
@@ -405,6 +413,9 @@ class Topic(Doc):
     description: str = ""
     keywords: list[str] = Field(default_factory=list)
     status: Literal["active", "proposed"] = "active"
+    # Ids of related topics (the semantic graph). Always symmetric: the Connector agent adds
+    # each link to both topics.
+    branches: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -467,7 +478,9 @@ class Member(Doc):
     COLLECTION: ClassVar[str] = "members"
 
     community_id: str | None = None
-    language: str = "en"
+    language: str = "en"  # the language the member reads in
+    # Further languages the member also reads. Stories in any other language are never shown.
+    reading_languages: list[str] = Field(default_factory=list)
     # Set by an editor when this person is one of the community's trusted voices.
     trusted_voice_id: str | None = None
     # Community admins and moderators are the community's trusted voices. They may act as
@@ -477,6 +490,84 @@ class Member(Doc):
     review_languages: list[str] = Field(default_factory=list)
     # Shown to readers next to an approval, so it is set only with the person's consent.
     display_name: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+# ------------------------------------------------- following, reactions and sharing
+
+ShareTarget = Literal["facebook", "x", "whatsapp", "telegram", "linkedin", "email", "copy_link"]
+
+
+class OfficialAccount(Doc):
+    """An authority or service a member can follow next to the communities (Migri, the city)."""
+
+    COLLECTION: ClassVar[str] = "official_accounts"
+
+    name: str
+    description: str = ""
+    url: str = ""
+    languages: list[str] = Field(default_factory=list)
+    regions: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list)
+    # Feeds (``SourceConfig.id``) whose stories show up when a member follows this account.
+    source_ids: list[str] = Field(default_factory=list)
+    priority: int = 100
+
+
+class Follow(Doc):
+    """A member follows a community or an official account. The id is derived from the
+    three fields, so following twice is one record."""
+
+    COLLECTION: ClassVar[str] = "follows"
+
+    member_id: str
+    target_kind: Literal["community", "official"]
+    target_id: str
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @staticmethod
+    def key(member_id: str, target_kind: str, target_id: str) -> str:
+        return f"follow:{member_id}:{target_kind}:{target_id}"
+
+
+class Reaction(Doc):
+    """A like. One per member and story (the id is derived), removed again by unliking."""
+
+    COLLECTION: ClassVar[str] = "reactions"
+
+    member_id: str
+    story_id: str
+    community_id: str | None = None  # where the member saw the story
+    kind: Literal["like"] = "like"
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @staticmethod
+    def key(member_id: str, story_id: str) -> str:
+        return f"like:{member_id}:{story_id}"
+
+
+class Comment(Doc):
+    COLLECTION: ClassVar[str] = "comments"
+
+    story_id: str
+    member_id: str  # pseudonymous reference
+    community_id: str | None = None
+    text: str
+    language: str = "en"
+    status: Literal["visible", "hidden"] = "visible"
+    hidden_by: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class Share(Doc):
+    """A member chose to share a story to a social network (or copy its link)."""
+
+    COLLECTION: ClassVar[str] = "shares"
+
+    story_id: str
+    member_id: str
+    community_id: str | None = None
+    platform: ShareTarget
     created_at: datetime = Field(default_factory=utcnow)
 
 

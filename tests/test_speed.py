@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from newsroom.config import Settings
-from newsroom.domain import Article, Event, TraceEvent, new_id
+from newsroom.domain import Article, Event, Story, TraceEvent, new_id
 from newsroom.llm import FakeLLM, collect_fake_handlers
 from newsroom.registry import load_fixture_articles
 from newsroom.service import Newsroom
@@ -151,3 +151,63 @@ def test_a_batch_uses_few_database_round_trips_per_article():
 
     per_article = (store.reads + store.writes + store.trace_writes) / len(articles)
     assert per_article <= 14, per_article  # it was about 28 before the cache
+
+
+# ------------------------------------------------------------------ side-by-side work
+
+
+def test_the_call_counter_is_exact_when_many_threads_call_at_once():
+    import threading
+
+    from newsroom.limits import CycleLimits
+
+    limits = CycleLimits(max_model_calls=10**6, max_seconds=60)
+    limits.start()
+
+    def hammer():
+        for _ in range(2000):
+            limits.count_call()
+
+    threads = [threading.Thread(target=hammer) for _ in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+
+    assert limits.calls == 16000
+
+
+def test_running_stories_and_languages_side_by_side_gives_the_same_result():
+    def cycle(**workers):
+        nr = newsroom(**workers)
+        report = nr.run_cycle(None, use_fixtures=True)
+        calls = sorted(task for task, _ in nr.ctx.llm.calls)
+        return (
+            [(r.community_id, r.working_title, r.status) for r in report.runs],
+            calls,
+            report.pitches,
+        )
+
+    one_at_a_time = cycle(story_workers=1, translation_workers=1)
+    side_by_side = cycle(story_workers=4, translation_workers=4)
+
+    assert side_by_side == one_at_a_time  # same stories, same order, same model calls
+
+
+def test_back_translation_is_only_for_risky_stories():
+    from newsroom.domain import RiskTier
+
+    nr = newsroom()
+    nr.run_cycle(["arabic-speakers-finland"], use_fixtures=True)
+    lanes = nr.communities["arabic-speakers-finland"].languages
+    expected = 0
+    for story in nr.store.find(Story):
+        machine = [
+            lane for lane in lanes if lane.code != story.language and lane.human_review != "human_only"
+        ]
+        if story.risk_tier is RiskTier.HIGH:
+            expected += len(machine)  # every machine translation is checked
+        elif story.risk_tier is RiskTier.ELEVATED:
+            expected += sum(1 for lane in machine if lane.tier == "B")
+        # LOW: no second call at all, even for a tier-B language such as Arabic
+
+    asked = [task for task, _ in nr.ctx.llm.calls]
+    assert asked.count("translator.backtranslate") == expected

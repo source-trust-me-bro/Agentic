@@ -12,6 +12,9 @@ os.environ["MONGODB_URI"] = ""
 os.environ["API_KEY"] = ""
 os.environ["HF_TOKEN"] = ""
 os.environ["ARCHITECT_USES_MODEL"] = "true"  # tests exercise the model path explicitly
+# The shipped defaults are relaxed (hackathon); the editorial rules are tested in strict mode.
+os.environ["STRICT_STANDARDS"] = "true"
+os.environ["POLICY_FILE"] = os.path.join(os.path.dirname(__file__), "fixtures", "policy_strict.yaml")
 
 
 import pytest

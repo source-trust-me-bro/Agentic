@@ -87,7 +87,9 @@ def test_a_cycle_can_run_in_the_background(newsroom):
     import time
 
     with TestClient(create_app(newsroom)) as client:
-        assert client.get("/cycle/latest").json() == {"status": "idle"}
+        idle = client.get("/cycle/latest").json()
+        assert idle["status"] == "idle" and idle["progress"]["running"] is False
+        assert idle["progress"]["percent"] == 0
 
         started = client.post(
             "/cycle/start", json={"community_ids": ["lapland-seasonal"], "use_fixtures": True}

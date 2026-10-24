@@ -16,6 +16,7 @@ from newsroom import guards
 from newsroom.agents.base import Agent
 from newsroom.domain import Article, SourceConfig
 from newsroom.lexicon import words
+from newsroom.parallel import run_parallel
 from newsroom.sources.rss import extract_content, fetch_feed
 
 FAKE_HANDLERS: dict[str, Callable[[dict], BaseModel]] = {}  # the monitor makes no model calls
@@ -63,40 +64,137 @@ class MonitorAgent(Agent):
 
         by_id = {source.id: source for source in sources}
         fresh: list[Article] = []
+        progress = self.ctx.progress
 
         if fixtures is not None:
             batches = [(by_id.get(a.source_id), [a]) for a in fixtures]
+            progress.begin("collect", total=len(batches), detail="Reading the saved sample news")
             for source, articles in batches:
                 fresh.extend(self._ingest(articles, source, fetch_text=False))
+                progress.advance("collect")
+            progress.finish_stage("collect", detail=f"{len(fresh)} new articles")
             return fresh
 
         # Official bodies first: city decisions and permit news must not be cut by the cap.
-        for source in sorted(sources, key=lambda s: 0 if s.official else 1):
+        ordered = sorted(sources, key=lambda s: 0 if s.official else 1)
+        active = sum(1 for s in ordered if s.enabled and s.feed_url)
+        # Every feed gets an equal share of the cap, so the last feeds are not starved by the
+        # first ones. Items that are already stored do not use up a feed's share.
+        quota = max(1, -(-max_new // max(1, active))) if max_new is not None else None
+        progress.begin("collect", total=active, detail="Reading news feeds")
+
+        # Feeds are downloaded a wave at a time, official bodies first: everything in a wave at the
+        # same moment, then the full text of its new articles at the same moment. Waiting on 20+
+        # websites one after another was most of the time a cycle spent here. Waves keep the
+        # priority order and stop early: once the cap is reached the later feeds are never fetched.
+        wave = max(1, self.settings.fetch_workers)
+        for first in range(0, len(ordered), wave):
             if max_new is not None and len(fresh) >= max_new:
                 self.trace("fetch", "limit", f"article limit of {max_new} reached")
                 break
-            if not source.enabled or not source.feed_url:
-                self.trace(
-                    "skip_source",
-                    "skipped",
-                    "disabled or no feed_url configured",
-                    source_id=source.id,
+            chunk = ordered[first : first + wave]
+            fetchable = [s for s in chunk if s.enabled and s.feed_url]
+            fetched = dict(
+                zip(
+                    (s.id for s in fetchable),
+                    run_parallel(
+                        lambda s: self._download_feed(s, limit_per_source),
+                        fetchable,
+                        self.settings.fetch_workers,
+                        "feeds",
+                    ),
+                    strict=True,
                 )
-                continue
-            try:
-                articles = fetch_feed(source, limit=limit_per_source, settings=self.settings)
-                if not articles:
-                    self.trace("fetch", "source_failed", "no entries returned", source_id=source.id)
+            )
+            pages = self._download_pages(fetched, by_id, cap=(max_new or 100) * 2)
+
+            for source in chunk:
+                if max_new is not None and len(fresh) >= max_new:
+                    self.trace("fetch", "limit", f"article limit of {max_new} reached")
+                    break
+                if not source.enabled or not source.feed_url:
+                    self.trace(
+                        "skip_source",
+                        "skipped",
+                        "disabled or no feed_url configured",
+                        source_id=source.id,
+                    )
                     continue
-                fresh.extend(self._ingest(articles, source, fetch_text=True))
-            except Exception as exc:  # one broken source must not stop the cycle
-                self.trace("fetch", "source_failed", str(exc)[:200], source_id=source.id)
+                progress.advance("collect", detail=f"Read {source.name}")
+                try:
+                    articles = fetched[source.id]
+                    if isinstance(articles, Exception):
+                        raise articles
+                    if not articles:
+                        self.trace(
+                            "fetch", "source_failed", "no entries returned", source_id=source.id
+                        )
+                        continue
+                    taken = 0
+                    for raw in articles:
+                        if quota is not None and taken >= quota:
+                            break
+                        if max_new is not None and len(fresh) >= max_new:
+                            break
+                        created = self._ingest([raw], source, fetch_text=True, pages=pages)
+                        taken += len(created)
+                        fresh.extend(created)
+                except Exception as exc:  # one broken source must not stop the cycle
+                    self.trace("fetch", "source_failed", str(exc)[:200], source_id=source.id)
         return fresh
 
     # ------------------------------------------------------------------ internals
 
+    def _download_feed(self, source: SourceConfig, limit: int) -> list[Article] | Exception:
+        try:
+            return fetch_feed(source, limit=limit, settings=self.settings)
+        except Exception as exc:  # one broken source must not stop the others
+            return exc
+
+    def _download_pages(
+        self,
+        fetched: dict[str, list[Article] | Exception],
+        by_id: dict[str, SourceConfig],
+        *,
+        cap: int,
+    ) -> dict[str, str | None]:
+        """Full text for the new articles of every feed, downloaded side by side.
+
+        Only articles that are not stored yet are fetched (one batch query tells which), and never
+        those of paywalled outlets."""
+
+        if not self.settings.fetch_article_content:
+            return {}
+        wanted: list[str] = []
+        for source_id, articles in fetched.items():
+            source = by_id.get(source_id)
+            if isinstance(articles, Exception) or (source and source.access == "metadata_only"):
+                continue
+            wanted.extend(
+                a.url
+                for a in articles
+                if a.url and not a.content and a.access != "metadata_only"
+            )
+        wanted = list(dict.fromkeys(wanted))
+        known = {a.url for a in self.store.find_in(Article, "url", wanted)}
+        todo = [url for url in wanted if url not in known][:cap]
+
+        def page(url: str) -> str | None:
+            try:
+                return extract_content(url, settings=self.settings)
+            except Exception:  # noqa: BLE001 - a page that will not load is simply skipped
+                return None
+
+        texts = run_parallel(page, todo, self.settings.fetch_workers, "pages")
+        return dict(zip(todo, texts, strict=True))
+
     def _ingest(
-        self, articles: list[Article], source: SourceConfig | None, *, fetch_text: bool
+        self,
+        articles: list[Article],
+        source: SourceConfig | None,
+        *,
+        fetch_text: bool,
+        pages: dict[str, str | None] | None = None,
     ) -> list[Article]:
         created: list[Article] = []
         metadata_only = bool(source and source.access == "metadata_only")
@@ -115,7 +213,10 @@ class MonitorAgent(Agent):
                     url=raw.url,
                 )
             elif fetch_text and self.settings.fetch_article_content and not content:
-                content = extract_content(raw.url, settings=self.settings)
+                if pages is not None and raw.url in pages:
+                    content = pages[raw.url]  # already downloaded alongside the others
+                else:
+                    content = extract_content(raw.url, settings=self.settings)
 
             article = raw.model_copy(
                 update={

@@ -77,7 +77,7 @@ def test_a_whole_cycle_is_persisted_in_the_database(mongo_newsroom, mongo_db):
     assert counts["stories"] >= 1 and counts["translations"] >= 1
     assert counts["standards_reports"] >= 1
     assert counts["agent_runs"] >= 1  # the audit trail is saved too
-    assert counts["communities"] == 3
+    assert counts["communities"] == len(mongo_newsroom.communities)
 
     # Articles are linked to their event and the event to a topic, all in the database.
     linked = mongo_db["articles"].count_documents({"event_id": {"$ne": None}})

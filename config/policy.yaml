@@ -5,7 +5,7 @@
 # `high_risk_roles: []`. Language review never holds a story back: each language is
 # published when its own reviewer approves it.
 review:
-  high_risk_roles: [subject_expert, community_reviewer]
+  high_risk_roles: []
 
 # Topics where an error can hurt someone. A story touching any of these is HIGH risk:
 # it needs a named human subject expert, the official source linked, and (for non-source
@@ -60,3 +60,9 @@ disclosure:
   fi: >
     Laadittu tekoälyavusteisessa toimituksessa ja hyväksytty nimetyn toimittajan
     toimesta. Alkuperäiset lähteet on linkitetty. Kerro meille, jos jokin on virheellistä.
+  sv: >
+    Framtagen av en AI-stödd redaktion och godkänd av en namngiven redaktör. Originalrapporteringen
+    är länkad nedan. Berätta för oss om något är fel.
+  ar: >
+    أُعدّت هذه المادة في غرفة أخبار تستعين بالذكاء الاصطناعي ووافق عليها محرر بشري مُسمّى.
+    روابط التقارير الأصلية أدناه. أخبرنا إذا كان هناك أي خطأ.

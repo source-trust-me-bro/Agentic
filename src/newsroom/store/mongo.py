@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -26,6 +27,12 @@ _COLLECTIONS = [
     "topics",
     "events",
     "tree_proposals",
+    "members",
+    "official_accounts",
+    "follows",
+    "reactions",
+    "comments",
+    "shares",
     "agent_runs",
 ]
 
@@ -50,6 +57,10 @@ class MongoStore:
         self.db["events"].create_index([("status", ASCENDING), ("last_updated", -1)])
         self.db["stories"].create_index([("community_id", ASCENDING), ("status", ASCENDING)])
         self.db["reviews"].create_index([("story_id", ASCENDING), ("story_version", ASCENDING)])
+        self.db["follows"].create_index([("member_id", ASCENDING)])
+        self.db["follows"].create_index([("target_kind", ASCENDING), ("target_id", ASCENDING)])
+        for name in ("reactions", "comments", "shares"):
+            self.db[name].create_index([("story_id", ASCENDING), ("created_at", -1)])
         self.db["agent_runs"].create_index([("run_id", ASCENDING), ("created_at", ASCENDING)])
 
     def put(self, doc: Doc) -> None:
@@ -70,6 +81,22 @@ class MongoStore:
 
     def find(self, cls: type[D], **equals: Any) -> list[D]:
         query = {("_id" if k == "id" else k): v for k, v in equals.items()}
+        return [self._load(cls, raw) for raw in self.db[cls.COLLECTION].find(query)]  # type: ignore[misc]
+
+    def get_many(self, cls: type[D], ids: Iterable[str]) -> dict[str, D]:
+        wanted = list(dict.fromkeys(ids))
+        if not wanted:
+            return {}
+        cursor = self.db[cls.COLLECTION].find({"_id": {"$in": wanted}})
+        docs = (self._load(cls, raw) for raw in cursor)
+        return {doc.id: doc for doc in docs if doc is not None}
+
+    def find_in(self, cls: type[D], field: str, values: Iterable[Any], **equals: Any) -> list[D]:
+        wanted = list(dict.fromkeys(values))
+        if not wanted:
+            return []
+        query = {("_id" if k == "id" else k): v for k, v in equals.items()}
+        query["_id" if field == "id" else field] = {"$in": wanted}
         return [self._load(cls, raw) for raw in self.db[cls.COLLECTION].find(query)]  # type: ignore[misc]
 
     def delete(self, cls: type[Doc], doc_id: str) -> bool:

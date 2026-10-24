@@ -30,7 +30,7 @@ community and newsroom calls. Browsers never see the newsroom key.
 ## What an editor does: press Publish
 
 The agents do the routine work on their own: they collect the feeds on a schedule (every hour when a
-real model is configured), group the same news from Kaleva, Yle and BBC, pick stories, check claims,
+real model is configured), group the same news from Kaleva, the City of Oulu and Migri, pick stories, check claims,
 attach official references, write the explainer, draft the translations and run the standards check.
 The editor finds finished stories waiting and presses **Publish**.
 
@@ -48,7 +48,7 @@ Details of the desk:
 
 On the **Editor** page, the **Newsroom desk**:
 
-1. Runs a newsroom cycle (collect, cluster the same news from Kaleva, Yle and BBC into events, pick stories).
+1. Runs a newsroom cycle (collect, cluster the same news from Kaleva, the City of Oulu and Migri into events, pick stories).
 2. Sees each prepared story with its risk level, the sources the agents attached (marked "Added by the newsroom"), translation status and what is still needed.
 3. **Checks the sources and adds more** if needed.
 4. Approves, requests changes, or rejects. The reviewer is the signed-in editor. The name comes from the account, not from a form field.

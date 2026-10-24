@@ -43,4 +43,15 @@ def build_llm(settings: Settings | None = None) -> LLM:
             base_url=settings.hf_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
         )
+    if settings.llm_provider == "nvidia":
+        from newsroom.llm.openai_compat import OpenAICompatLLM
+
+        return OpenAICompatLLM(
+            name="nvidia",
+            api_key=settings.nvidia_api_key,
+            model=settings.nvidia_model,
+            base_url=settings.nvidia_base_url,
+            timeout_seconds=settings.llm_timeout_seconds,
+            json_mode=False,  # the prompt demands JSON and the reply is validated; no flag needed
+        )
     return FakeLLM(collect_fake_handlers())

@@ -44,6 +44,7 @@ class OpenAICompatLLM:
         base_url: str,
         timeout_seconds: float = 120.0,
         retries: int = 2,
+        json_mode: bool = True,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         if not api_key:
@@ -54,23 +55,24 @@ class OpenAICompatLLM:
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._timeout = timeout_seconds
         self._retries = retries
+        self._json_mode = json_mode
         self._transport = transport
 
     def _scrub(self, message: str) -> str:
         return message.replace(self._key, "***")
 
     def _complete(self, messages: list[dict[str, str]], *, max_tokens: int = 4096) -> str:
+        body: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+        }
+        if self._json_mode:  # not every endpoint accepts this flag
+            body["response_format"] = {"type": "json_object"}
         with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
             response = client.post(
-                self._url,
-                headers={"Authorization": f"Bearer {self._key}"},
-                json={
-                    "model": self._model,
-                    "messages": messages,
-                    "temperature": 0.2,
-                    "max_tokens": max_tokens,
-                    "response_format": {"type": "json_object"},
-                },
+                self._url, headers={"Authorization": f"Bearer {self._key}"}, json=body
             )
         if response.status_code in _PERMANENT:
             raise LLMError(

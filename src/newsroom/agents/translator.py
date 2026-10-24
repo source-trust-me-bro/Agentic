@@ -128,7 +128,8 @@ class TranslatorAgent(Agent):
         flags = compare_texts(source_text, translated_text, protected, "translation")
 
         high_risk = story.risk_tier is RiskTier.HIGH
-        if high_risk or lane.tier == "B":
+        # A second model call per language: only where a mistake could hurt someone.
+        if high_risk or (lane.tier == "B" and story.risk_tier is not RiskTier.LOW):
             flags += self._backtranslation_flags(source_text, draft, lane, protected)
 
         translation = Translation(

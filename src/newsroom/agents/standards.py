@@ -131,7 +131,10 @@ class StandardsEditorAgent(Agent):
                     name=name,
                     passed=passed,
                     note=note if (info or not passed) else "",
-                    blocking=blocking,
+                    # Hackathon mode: findings are shown to the editor but do not stop a
+                    # publish, except an empty draft. STRICT_STANDARDS=true restores blocking.
+                    blocking=blocking
+                    and (self.ctx.settings.strict_standards or name == "Story has a body"),
                 )
             )
 

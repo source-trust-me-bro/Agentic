@@ -1,0 +1,44 @@
+# Authorities and services a member can follow next to the communities. Following one shows its
+# stories in "My feed" and feeds the "Recommended to follow" list. `source_ids` name feeds in
+# sources.yaml; an account without a feed can still be followed but shows no stories yet.
+# Homepages only, matching official_sources.yaml.
+
+accounts:
+  - id: city-oulu
+    name: City of Oulu
+    description: Municipal services, decisions and notices for Oulu residents.
+    url: https://www.ouka.fi/en
+    languages: [fi, en]
+    regions: [Oulu]
+    topics: [housing, legal_rights]
+    source_ids: [oulu-city, oulu-notices]
+    priority: 1
+  - id: migri
+    name: Finnish Immigration Service (Migri)
+    description: Residence permits, visas, citizenship and asylum.
+    url: https://migri.fi/en
+    languages: [fi, en, sv]
+    topics: [residence_permit]
+    source_ids: [migri-press, migri-bulletins, migri-exceptions]
+    priority: 1
+  - id: police
+    name: Finnish Police
+    description: Safety, crime prevention and how to report a crime.
+    url: https://poliisi.fi/en
+    languages: [fi, en, sv]
+    topics: [safety]
+    priority: 3
+  - id: infofinland
+    name: InfoFinland (official multilingual information service)
+    description: Official guidance for people moving to Finland, in many languages.
+    url: https://www.infofinland.fi/en
+    languages: [fi, en, ar, uk, ru]
+    topics: [residence_permit, employment, health, legal_rights, housing, money_and_tax]
+    priority: 1
+  - id: mun-oulu
+    name: Mun Oulu (City of Oulu magazine)
+    description: Stories about life in Oulu from the city's own magazine.
+    languages: [fi, en]
+    regions: [Oulu]
+    source_ids: [oulu-mun-oulu]
+    priority: 4

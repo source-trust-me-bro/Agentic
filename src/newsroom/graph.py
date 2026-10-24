@@ -57,6 +57,7 @@ from newsroom.hitl import (
     missing_roles,
     record_decisions,
 )
+from newsroom.parallel import run_parallel
 
 
 class StoryState(TypedDict, total=False):
@@ -207,13 +208,21 @@ class StoryWorkflow:
     def translate(self, state: StoryState) -> StoryState:
         community = self._community(state)
         story = self._story(state)
-        ids: list[str] = []
-        for lane in community.languages:
-            if lane.code == story.language:
-                continue
+        lanes = [lane for lane in community.languages if lane.code != story.language]
+        progress = self.ctx.progress
+        pitch_id = state.get("pitch_id", "")
+        progress.story_languages(pitch_id, total=len(lanes))
+
+        def translate_one(lane: Any) -> Translation:
             translation = self.translator.translate(story, lane, community)
-            ids.append(translation.id)
-        return {"translation_ids": ids}
+            progress.story_languages(pitch_id, add_done=1, language=lane.label)
+            return translation
+
+        # Each language is its own model call, so they run side by side (order is kept).
+        translations = run_parallel(
+            translate_one, lanes, self.ctx.settings.translation_workers, "translate"
+        )
+        return {"translation_ids": [t.id for t in translations]}
 
     def standards_review(self, state: StoryState) -> StoryState:
         community = self._community(state)
@@ -393,17 +402,26 @@ class StoryWorkflow:
         )
         return {"outcome": "published", "publication_id": publication.id}
 
+    def _reports(self, step: str, node: Any) -> Any:
+        """Tell the editor which step this story has reached, then run the node."""
+
+        def run(state: StoryState) -> StoryState:
+            self.ctx.progress.story_step(state.get("pitch_id", ""), step)
+            return node(state)
+
+        return run
+
     # -------------------------------------------------------------------- graph
 
     def _build(self) -> StateGraph:
         graph = StateGraph(StoryState)
-        graph.add_node("investigate", self.investigate)
-        graph.add_node("explain", self.explain)
+        graph.add_node("investigate", self._reports("investigate", self.investigate))
+        graph.add_node("explain", self._reports("explain", self.explain))
         graph.add_node("attach_sources", self.attach_sources)
-        graph.add_node("translate", self.translate)
-        graph.add_node("standards", self.standards_review)
+        graph.add_node("translate", self._reports("translate", self.translate))
+        graph.add_node("standards", self._reports("standards", self.standards_review))
         graph.add_node("revise", self.revise)
-        graph.add_node("human_gate", self.human_gate)
+        graph.add_node("human_gate", self._reports("review", self.human_gate))
         graph.add_node("publish", self.publish)
 
         graph.add_edge(START, "investigate")

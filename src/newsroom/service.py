@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -13,8 +14,10 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from newsroom.agents.architect import ArchitectResult, KnowledgeArchitectAgent
 from newsroom.agents.base import AgentContext
 from newsroom.agents.community_desk import CommunityDeskAgent
+from newsroom.agents.connector import ConnectorAgent
 from newsroom.agents.distributor import DistributorAgent
 from newsroom.agents.editor import NewsEditorAgent
+from newsroom.agents.explainer import limit_words, word_count
 from newsroom.agents.monitor import MonitorAgent
 from newsroom.config import Settings, get_settings
 from newsroom.domain import (
@@ -32,10 +35,12 @@ from newsroom.domain import (
     SourceConfig,
     Story,
     StoryStatus,
+    Topic,
     TraceEvent,
     Translation,
     new_id,
 )
+from newsroom.engagement import EngagementService
 from newsroom.graph import StoryWorkflow
 from newsroom.hitl import (
     ReviewError,
@@ -49,10 +54,11 @@ from newsroom.hitl import (
 from newsroom.limits import CycleLimits
 from newsroom.llm import build_llm
 from newsroom.llm.budget import BudgetedLLM
+from newsroom.parallel import run_parallel, start_in_background
 from newsroom.registry import load_communities, load_fixture_articles, load_sources
 from newsroom.store import build_store
 from newsroom.store.base import Store
-from newsroom.topics import seed_topics
+from newsroom.topics import expected_topic_ids, seed_topics
 
 
 @dataclass
@@ -77,6 +83,7 @@ class CycleReport:
     runs: list[StoryRun] = field(default_factory=list)
     articles_processed: int = 0
     articles_deferred: int = 0  # saved, and picked up by the next cycle
+    topic_links: int = 0  # new links the Connector added to the topic graph
     stopped_reason: str | None = None
 
 
@@ -109,7 +116,11 @@ class Newsroom:
             max_seconds=self.settings.cycle_max_seconds,
         )
         self.ctx = AgentContext(
-            llm=BudgetedLLM(llm or build_llm(self.settings), self.limits),
+            llm=BudgetedLLM(
+                llm or build_llm(self.settings),
+                self.limits,
+                self.settings.max_concurrent_model_calls,
+            ),
             store=self.store,
             settings=self.settings,
             limits=self.limits,
@@ -117,9 +128,13 @@ class Newsroom:
         self.communities = {c.id: c for c in (communities or load_communities())}
         for community in self.communities.values():
             self.store.put(community)
-        self.sources = sources if sources is not None else load_sources()
+        # Sources given by the caller stay as given; otherwise sources.yaml is read again before
+        # every cycle, so adding or removing a feed needs no restart.
+        self._sources_from_file = sources is None
+        self.sources = sources if sources is not None else load_sources(self.settings.sources_file)
         self.monitor = MonitorAgent(self.ctx)
         self.architect = KnowledgeArchitectAgent(self.ctx)
+        self.connector = ConnectorAgent(self.ctx)
         self.editor = NewsEditorAgent(self.ctx)
         self.desk = CommunityDeskAgent(self.ctx)
         self.distributor = DistributorAgent(self.ctx)
@@ -128,7 +143,34 @@ class Newsroom:
             self.communities,
             checkpointer or make_checkpointer(self.settings, persistent=persistent_checkpoints),
         )
-        seed_topics(self.store)
+        self.ensure_seeded()
+        self.engagement = EngagementService(self)
+        self.ctx.progress.usage_source = self.ctx.llm.stats
+
+    def reload_sources(self) -> None:
+        """Read config/sources.yaml again. A file that cannot be read keeps the current list."""
+
+        if not self._sources_from_file:
+            return
+        try:
+            self.sources = load_sources(self.settings.sources_file)
+        except Exception:  # noqa: BLE001 - a typo in the file must not stop a cycle
+            self.ctx.progress.log("newsroom", "sources.yaml could not be read; using the last list", "error")
+
+    def ensure_seeded(self) -> None:
+        """Put the configured topics and communities in the database if they are missing.
+
+        Done at start-up, before every cycle and when the topic tree is read, so emptying the
+        database while the service runs does not leave an empty tree until the next restart.
+        Idempotent: what already exists is kept as it is."""
+
+        # Two queries when nothing is missing, which is almost always.
+        have = self.store.get_many(Community, self.communities.keys())
+        for community in self.communities.values():
+            if community.id not in have:
+                self.store.put(community)
+        if not expected_topic_ids() <= {t.id for t in self.store.find(Topic)}:
+            seed_topics(self.store)
 
     # ------------------------------------------------------------------- cycle
 
@@ -138,16 +180,31 @@ class Newsroom:
         *,
         use_fixtures: bool = False,
         fixtures: list[Article] | None = None,
+        news_count: int | None = None,
     ) -> CycleReport:
         """Collect news, cluster it into events, pick stories per community, and run each
         story until it needs a human.
 
-        A cycle is bounded: a few items per feed, a cap on articles, a time budget, a model-call
-        budget and a Stop button. Whatever is left over is saved and handled next time."""
+        ``news_count`` is the editor's choice of how many articles to collect this time (10, 50
+        or 100). A cycle is still bounded by a time budget, a model-call budget and a Stop
+        button. Whatever is left over is saved and handled next time."""
 
+        self.reload_sources()
         self.limits.start()
+        self.ctx.llm.reset_stats()
+        self.ctx.progress.start()
         try:
-            return self._run_cycle(community_ids, use_fixtures=use_fixtures, fixtures=fixtures)
+            self.ensure_seeded()
+            report = self._run_cycle(
+                community_ids, use_fixtures=use_fixtures, fixtures=fixtures, news_count=news_count
+            )
+            self.ctx.progress.finish(
+                "stopped" if report.stopped_reason else "done", report.stopped_reason or ""
+            )
+            return report
+        except Exception as exc:
+            self.ctx.progress.finish("failed", f"{type(exc).__name__}: {str(exc)[:200]}")
+            raise
         finally:
             self.limits.finish()
 
@@ -168,12 +225,18 @@ class Newsroom:
         *,
         use_fixtures: bool,
         fixtures: list[Article] | None,
+        news_count: int | None = None,
     ) -> CycleReport:
         report = CycleReport(run_id=self.ctx.run_id)
-        cap = self.settings.max_articles_per_cycle
+        cap = news_count or self.settings.max_articles_per_cycle
+        feeds = max(1, sum(1 for s in self.sources if s.enabled and s.feed_url))
+        # Read twice a feed's share, so items stored by an earlier cycle do not hide new ones.
+        per_source = max(self.settings.max_items_per_source, 2 * -(-cap // feeds))
+        # A bigger intake means a few more stories per community, not one story per article.
+        max_pitches = max(self.settings.max_pitches_per_cycle, cap // 25)
         new = self.monitor.scan(
             self.sources,
-            limit_per_source=self.settings.max_items_per_source,
+            limit_per_source=per_source,
             max_new=cap,
             fixtures=(fixtures if fixtures is not None else load_fixture_articles())
             if use_fixtures or fixtures is not None
@@ -187,31 +250,77 @@ class Newsroom:
         report.articles_processed = len(articles)
         report.articles_deferred = max(0, len(new) + len(backlog) - len(articles))
 
+        progress = self.ctx.progress
+        progress.finish_stage("collect", detail=f"{len(new)} new articles")
         architect_result: ArchitectResult = self.architect.process(articles)
         report.events = len(architect_result.events)
         report.event_ids = [e.id for e in architect_result.events]
         # The architect sets event_id on the stored articles; reload so selection sees it.
         articles = [self.store.get(Article, a.id) or a for a in articles]
+        # Linking related topics needs nothing from the stories, so it runs while they are written.
+        def link() -> int:
+            progress.begin("link", detail="Finding related topics")
+            added = self.connector.connect()
+            progress.finish_stage("link", detail=f"{added} new links")
+            return added
+
+        if self.limits.stop_reason():
+            progress.finish_stage("link", "skipped", "stopped before linking")
+            finish_linking = None
+        else:
+            finish_linking = start_in_background(link, "connector")
 
         wanted = community_ids or list(self.communities)
-        for community_id in wanted:
-            if self.limits.stop_reason():
-                break
-            community = self.communities[community_id]
-            pitches = self.editor.select(
-                community, articles, max_pitches=self.settings.max_pitches_per_cycle
-            )
-            report.pitches += len(pitches)
-            for pitch in pitches:
+        progress.begin("select", total=len(wanted), detail="Asking each community's editor")
+
+        def select(community_id: str) -> list[Pitch]:
+            try:
                 if self.limits.stop_reason():
-                    break
-                report.runs.append(self._run_story(pitch))
+                    return []
+                community = self.communities[community_id]
+                return self.editor.select(community, articles, max_pitches=max_pitches)
+            finally:
+                progress.advance("select")
+
+        pitches = [p for found in self._parallel(select, wanted) for p in found]
+        report.pitches = len(pitches)
+        progress.finish_stage("select", detail=f"{len(pitches)} stories chosen")
+        progress.begin("write", total=len(pitches), detail="Stories are written side by side")
+
+        def run(pitch: Pitch) -> StoryRun | None:
+            return None if self.limits.stop_reason() else self._run_story(pitch)
+
+        try:
+            report.runs.extend(r for r in self._parallel(run, pitches) if r is not None)
+            progress.finish_stage(
+                "write", detail=f"{len(report.runs)} stories ready for a person to review"
+            )
+        finally:
+            if finish_linking is not None:
+                report.topic_links = finish_linking()
         report.stopped_reason = self.limits.triggered
         return report
 
+    def _parallel(self, fn: Callable[[Any], Any], items: Iterable[Any]) -> list[Any]:
+        """Run ``fn`` over ``items`` a few at a time, results in the original order. Model calls
+        are slow and the items are independent, so this is where a cycle gets its speed."""
+
+        return run_parallel(fn, items, self.settings.story_workers)
+
     def _run_story(self, pitch: Pitch) -> StoryRun:
-        result = self.workflow.start(pitch)
-        return self._summarise(pitch, result)
+        community = self.communities.get(pitch.community_id)
+        self.ctx.progress.story_started(
+            pitch.id, pitch.working_title, community.name if community else pitch.community_id
+        )
+        try:
+            result = self.workflow.start(pitch)
+        except Exception:
+            self.ctx.progress.story_finished(pitch.id, "failed")
+            raise
+        run = self._summarise(pitch, result)
+        self.ctx.progress.story_finished(pitch.id, run.status)
+        self.ctx.progress.advance("write")
+        return run
 
     def _summarise(self, pitch: Pitch, result: dict[str, Any]) -> StoryRun:
         pending = self.workflow.pending(pitch.id)
@@ -340,6 +449,18 @@ class Newsroom:
         if pitch is None:
             raise KeyError(f"Unknown pitch {pitch_id}.")
         validate_decisions(self.communities[pitch.community_id], decisions, self.store)
+        # The editor-in-chief says where the story goes: dashboard, community page, or both.
+        chosen = next(
+            (
+                item["destinations"]
+                for item in decisions
+                if item.get("role") == ReviewRole.EDITOR_IN_CHIEF.value and item.get("destinations")
+            ),
+            None,
+        )
+        if chosen:
+            pitch.publish_to = [d for d in ("dashboard", "community") if d in chosen]
+            self.store.put(pitch)
         if self.workflow.pending(pitch_id) is None:
             return self._review_published_languages(pitch, decisions)
         result = self.workflow.resume(pitch_id, decisions)
@@ -432,30 +553,58 @@ class Newsroom:
 
     # ------------------------------------------------------------------ reading
 
-    def feed(self, community_id: str) -> list[Publication]:
-        pubs = [p for p in self.store.find(Publication) if p.community_id == community_id]
+    def feed(self, community_id: str, destination: str | None = None) -> list[Publication]:
+        # The database filters by community; only the destination is checked here.
+        pubs = [
+            p
+            for p in self.store.find(Publication, community_id=community_id)
+            if not destination or destination in p.destinations
+        ]
         return sorted(pubs, key=lambda p: p.published_at, reverse=True)
 
-    def public_feed(self, community_id: str) -> list[dict[str, Any]]:
+    def public_feed(
+        self, community_id: str, destination: str | None = None
+    ) -> list[dict[str, Any]]:
         """What a community member sees: the story, who approved it, its sources, the AI
-        disclosure and any published corrections. Internal drafts never appear here."""
+        disclosure and any published corrections. Internal drafts never appear here.
+
+        Everything the page needs is read in a handful of batch queries (stories, approvals,
+        reviewers, corrections), not one query per story, so it stays fast on a remote database."""
 
         community = self.communities[community_id]
         voices = {v.id: v for v in community.trusted_voices}
+        publications = self.feed(community_id, destination)
+
+        stories = self.store.get_many(Story, (p.story_id for p in publications))
+        approvals = self.store.get_many(
+            ReviewDecision, (a for p in publications for a in p.approval_ids)
+        )
+        members = self.store.get_many(
+            Member,
+            (
+                d.reviewer.removeprefix("member:")
+                for d in approvals.values()
+                if d.reviewer.startswith("member:")
+            ),
+        )
+        published_corrections: dict[str, list[Correction]] = {}
+        for c in self.store.find_in(Correction, "story_id", stories.keys(), status="published"):
+            published_corrections.setdefault(c.story_id, []).append(c)
+
         items: list[dict[str, Any]] = []
-        for publication in self.feed(community_id):
-            story = self.store.get(Story, publication.story_id)
+        for publication in publications:
+            story = stories.get(publication.story_id)
             if story is None:
                 continue
             approvers = []
             for approval_id in publication.approval_ids:
-                approval = self.store.get(ReviewDecision, approval_id)
+                approval = approvals.get(approval_id)
                 if approval is None:
                     continue
                 voice = voices.get(approval.reviewer)
                 member = (
-                    self.store.get(Member, approval.reviewer.removeprefix("member:"))
-                    if (approval.reviewer.startswith("member:"))
+                    members.get(approval.reviewer.removeprefix("member:"))
+                    if approval.reviewer.startswith("member:")
                     else None
                 )
                 if member is not None:
@@ -467,8 +616,7 @@ class Newsroom:
                 approvers.append({"role": approval.role.value, "name": name, "title": title})
             corrections = [
                 {"text": c.description, "published_at": c.published_at}
-                for c in self.store.find(Correction, story_id=story.id)
-                if c.status == "published"
+                for c in published_corrections.get(story.id, [])
             ]
             items.append(
                 {
@@ -489,6 +637,88 @@ class Newsroom:
                 }
             )
         return items
+
+    def topics_export(self) -> list[dict[str, Any]]:
+        """The active topics, with their parents and related topics, for the reader app."""
+
+        self.ensure_seeded()
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "parent_id": t.parent_id,
+                "keywords": t.keywords,
+                "description": t.description,
+                "branches": t.branches,
+            }
+            for t in self.store.find(Topic)
+            if t.status == "active"
+        ]
+
+    def dashboard_export(self) -> dict[str, Any]:
+        """Everything the reader app needs to show published stories on its dashboard: the
+        topic tree (with branches) and every story sent to the dashboard, once per language."""
+
+        stats = self.engagement.all_stats()
+        topics = self.topics_export()
+        stories: list[dict[str, Any]] = []
+        # Everything is read in batches (stories, topic links, translations), not per story.
+        publications = [
+            p for p in self.store.find(Publication) if "dashboard" in p.destinations
+        ]
+        found = self.store.get_many(Story, (p.story_id for p in publications))
+        live = {
+            sid: s
+            for sid, s in found.items()
+            if s.status in (StoryStatus.PUBLISHED, StoryStatus.CORRECTED)
+        }
+        links = self.engagement._links(live.values())
+        translations_of: dict[str, dict[str, Translation]] = {}
+        for t in self.store.find_in(Translation, "story_id", live.keys()):
+            story_of = live[t.story_id]
+            if t.story_version == story_of.version and t.body_md.strip():
+                translations_of.setdefault(t.story_id, {})[t.language] = t
+        for publication in publications:
+            story = live.get(publication.story_id)
+            if story is None:
+                continue
+            topic_ids = links[story.id][1]
+            translations = translations_of.get(story.id, {})
+            versions = []
+            for language in dict.fromkeys(
+                r.language for r in publication.renditions if r.channel == "web"
+            ):
+                if language == story.language:
+                    text = (story.headline, story.standfirst, story.body_md)
+                elif language in translations:
+                    t = translations[language]
+                    text = (t.headline or story.headline, t.standfirst, t.body_md)
+                else:
+                    continue
+                # Byte-sized on the dashboard in every language, older stories included.
+                limit = self.settings.max_story_words
+                standfirst = limit_words(text[1] or "", min(35, limit // 4))
+                body = limit_words(text[2], max(limit - word_count(standfirst), limit // 2))
+                versions.append(
+                    {
+                        "language": language,
+                        "headline": text[0],
+                        "standfirst": standfirst,
+                        "body_md": body,
+                    }
+                )
+            stories.append(
+                {
+                    "story_id": story.id,
+                    "community_id": story.community_id,
+                    "published_at": publication.published_at,
+                    "topic_ids": topic_ids,
+                    "sources": [s.model_dump() for s in story.sources],
+                    "engagement": stats.get(story.id) or self.engagement._stat(None),
+                    "versions": versions,
+                }
+            )
+        return {"topics": topics, "stories": stories}
 
     # ----------------------------------------------------------------- members
 
